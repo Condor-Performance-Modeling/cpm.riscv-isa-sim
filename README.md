@@ -1,5 +1,4 @@
-fork test
-remember to push 'origin master' in this repo
+This is a fork. Remember to 'push origin master' (not main), in this repo.
 
 Spike RISC-V ISA Simulator
 ============================

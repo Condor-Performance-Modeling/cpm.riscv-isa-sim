@@ -1,3 +1,5 @@
+fork test
+
 Spike RISC-V ISA Simulator
 ============================
 

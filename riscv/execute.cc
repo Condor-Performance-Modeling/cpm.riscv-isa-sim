@@ -85,7 +85,7 @@ static void commit_log_print_insn(processor_t *p, reg_t pc, insn_t insn)
     if (item.first == 0)
       continue;
 
-    char prefix;
+    char prefix = ' ';
     int size;
     int rd = item.first >> 4;
     bool is_vec = false;
@@ -213,12 +213,12 @@ void processor_t::step(size_t n)
 {
   if (!state.debug_mode) {
     if (halt_request == HR_REGULAR) {
-      enter_debug_mode(DCSR_CAUSE_DEBUGINT);
+      enter_debug_mode(DCSR_CAUSE_DEBUGINT, 0);
     } else if (halt_request == HR_GROUP) {
-      enter_debug_mode(DCSR_CAUSE_GROUP);
-    } // !!!The halt bit in DCSR is deprecated.
-    else if (state.dcsr->halt) {
-      enter_debug_mode(DCSR_CAUSE_HALT);
+      enter_debug_mode(DCSR_CAUSE_GROUP, 0);
+    } else if (halt_on_reset) {
+      halt_on_reset = false;
+      enter_debug_mode(DCSR_CAUSE_HALT, 0);
     }
   }
 
@@ -226,6 +226,8 @@ void processor_t::step(size_t n)
     size_t instret = 0;
     reg_t pc = state.pc;
     mmu_t* _mmu = mmu;
+    state.prv_changed = false;
+    state.v_changed = false;
 
     #define advance_pc() \
       if (unlikely(invalid_pc(pc))) { \
@@ -245,6 +247,8 @@ void processor_t::step(size_t n)
     {
       take_pending_interrupt();
 
+      check_if_lpad_required();
+
       if (unlikely(slow_path()))
       {
         // Main simulation loop, slow path.
@@ -253,7 +257,7 @@ void processor_t::step(size_t n)
           if (unlikely(!state.serialized && state.single_step == state.STEP_STEPPED)) {
             state.single_step = state.STEP_NONE;
             if (!state.debug_mode) {
-              enter_debug_mode(DCSR_CAUSE_STEP);
+              enter_debug_mode(DCSR_CAUSE_STEP, 0);
               // enter_debug_mode changed state.pc, so we can't just continue.
               break;
             }
@@ -263,11 +267,11 @@ void processor_t::step(size_t n)
             state.single_step = state.STEP_STEPPED;
           }
 
-          if (!state.serialized) {
+          if (!state.serialized && check_triggers_icount) {
             auto match = TM.detect_icount_match();
             if (match.has_value()) {
               assert(match->timing == triggers::TIMING_BEFORE);
-              throw triggers::matched_t((triggers::operation_t)0, 0, match->action);
+              throw triggers::matched_t((triggers::operation_t)0, 0, match->action, state.v);
             }
           }
 
@@ -282,6 +286,17 @@ void processor_t::step(size_t n)
             disasm(fetch.insn);
           pc = execute_insn_logged(this, pc, fetch);
           advance_pc();
+
+          // Resume from debug mode in critical error
+          if (state.critical_error && !state.debug_mode) {
+            if (state.dcsr->read() & DCSR_CETRIG) {
+              enter_debug_mode(DCSR_CAUSE_EXTCAUSE, DCSR_EXTCAUSE_CRITERR);
+            } else {
+              // Handling of critical error is implementation defined
+              // For now just enter debug mode
+              enter_debug_mode(DCSR_CAUSE_HALT, 0);
+            }
+          }
         }
       }
       else while (instret < n)
@@ -307,13 +322,23 @@ void processor_t::step(size_t n)
       take_trap(t, pc);
       n = instret;
 
+      // If critical error then enter debug mode critical error trigger enabled
+      if (state.critical_error) {
+        if (state.dcsr->read() & DCSR_CETRIG) {
+          enter_debug_mode(DCSR_CAUSE_EXTCAUSE, DCSR_EXTCAUSE_CRITERR);
+        } else {
+          // Handling of critical error is implementation defined
+          // For now just enter debug mode
+          enter_debug_mode(DCSR_CAUSE_HALT, 0);
+        }
+      }
       // Trigger action takes priority over single step
       auto match = TM.detect_trap_match(t);
       if (match.has_value())
-        take_trigger_action(match->action, 0, state.pc);
+        take_trigger_action(match->action, 0, state.pc, 0);
       else if (unlikely(state.single_step == state.STEP_STEPPED)) {
         state.single_step = state.STEP_NONE;
-        enter_debug_mode(DCSR_CAUSE_STEP);
+        enter_debug_mode(DCSR_CAUSE_STEP, 0);
       }
     }
     catch (triggers::matched_t& t)
@@ -322,11 +347,11 @@ void processor_t::step(size_t n)
         delete mmu->matched_trigger;
         mmu->matched_trigger = NULL;
       }
-      take_trigger_action(t.action, t.address, pc);
+      take_trigger_action(t.action, t.address, pc, t.gva);
     }
     catch(trap_debug_mode&)
     {
-      enter_debug_mode(DCSR_CAUSE_SWBP);
+      enter_debug_mode(DCSR_CAUSE_SWBP, 0);
     }
     catch (wait_for_interrupt_t &t)
     {
@@ -340,10 +365,12 @@ void processor_t::step(size_t n)
       in_wfi = true;
     }
 
-    state.minstret->bump(instret);
+    if (!(state.mcountinhibit->read() & MCOUNTINHIBIT_IR))
+      state.minstret->bump(instret);
 
     // Model a hart whose CPI is 1.
-    state.mcycle->bump(instret);
+    if (!(state.mcountinhibit->read() & MCOUNTINHIBIT_CY))
+      state.mcycle->bump(instret);
 
     n -= instret;
   }

@@ -22,6 +22,7 @@
 #define RS2 READ_REG(insn.rs2())
 #define RS3 READ_REG(insn.rs3())
 #define WRITE_RD(value) WRITE_REG(insn.rd(), value)
+#define CHECK_RD() CHECK_REG(insn.rd())
 
 /* 0 : int
  * 1 : floating
@@ -30,9 +31,9 @@
  * 4 : csr
  */
 #define WRITE_REG(reg, value) ({ \
+    CHECK_REG(reg); \
     reg_t wdata = (value); /* value may have side effects */ \
     if (DECODE_MACRO_USAGE_LOGGED) STATE.log_reg_write[(reg) << 4] = {wdata, 0}; \
-    CHECK_REG(reg); \
     STATE.XPR.write(reg, wdata); \
   })
 #define WRITE_FREG(reg, value) ({ \
@@ -41,6 +42,15 @@
     DO_WRITE_FREG(reg, wdata); \
   })
 #define WRITE_VSTATUS STATE.log_reg_write[3] = {0, 0};
+
+/* the value parameter needs to be evaluated before writing to the registers */
+#define WRITE_REG_PAIR(reg, value) \
+  if (reg != 0) { \
+    require((reg) % 2 == 0); \
+    uint64_t val = (value); \
+    WRITE_REG(reg, sext32(val)); \
+    WRITE_REG((reg) + 1, (sreg_t(val)) >> 32); \
+  }
 
 // RVC macros
 #define WRITE_RVC_RS1S(value) WRITE_REG(insn.rvc_rs1s(), value)
@@ -60,15 +70,36 @@
 #define SP READ_REG(X_SP)
 #define RA READ_REG(X_RA)
 
+// Zdinx macros
+#define READ_REG_PAIR(reg) ({ \
+  require((reg) % 2 == 0); \
+  (reg) == 0 ? reg_t(0) : \
+  (READ_REG((reg) + 1) << 32) + zext32(READ_REG(reg)); })
+
+#define RS1_PAIR READ_REG_PAIR(insn.rs1())
+#define RS2_PAIR READ_REG_PAIR(insn.rs2())
+#define RD_PAIR READ_REG_PAIR(insn.rd())
+#define WRITE_RD_PAIR(value) WRITE_REG_PAIR(insn.rd(), value)
+
+// Zilsd macros
+#define WRITE_RD_D(value) (xlen == 32 ? WRITE_RD_PAIR(value) : WRITE_RD(value))
+
+// Zclsd macros
+#define WRITE_RVC_RS2S_PAIR(value) WRITE_REG_PAIR(insn.rvc_rs2s(), value)
+#define RVC_RS2S_PAIR READ_REG_PAIR(insn.rvc_rs2s())
+#define RVC_RS2_PAIR READ_REG_PAIR(insn.rvc_rs2())
+
 // FPU macros
 #define READ_ZDINX_REG(reg) (xlen == 32 ? f64(READ_REG_PAIR(reg)) : f64(STATE.XPR[reg] & (uint64_t)-1))
 #define READ_FREG_H(reg) (p->extension_enabled(EXT_ZFINX) ? f16(STATE.XPR[reg] & (uint16_t)-1) : f16(READ_FREG(reg)))
+#define READ_FREG_BF(reg) (p->extension_enabled(EXT_ZFINX) ? bf16(STATE.XPR[reg] & (uint16_t)-1) : bf16(READ_FREG(reg)))
 #define READ_FREG_F(reg) (p->extension_enabled(EXT_ZFINX) ? f32(STATE.XPR[reg] & (uint32_t)-1) : f32(READ_FREG(reg)))
 #define READ_FREG_D(reg) (p->extension_enabled(EXT_ZFINX) ? READ_ZDINX_REG(reg) : f64(READ_FREG(reg)))
 #define FRS1 READ_FREG(insn.rs1())
 #define FRS2 READ_FREG(insn.rs2())
 #define FRS3 READ_FREG(insn.rs3())
 #define FRS1_H READ_FREG_H(insn.rs1())
+#define FRS1_BF READ_FREG_BF(insn.rs1())
 #define FRS1_F READ_FREG_F(insn.rs1())
 #define FRS1_D READ_FREG_D(insn.rs1())
 #define FRS2_H READ_FREG_H(insn.rs2())
@@ -90,6 +121,7 @@ do { \
     WRITE_FRD(value); \
   } \
 } while (0)
+#define WRITE_FRD_BF WRITE_FRD_H
 #define WRITE_FRD_F(value) \
 do { \
   if (p->extension_enabled(EXT_ZFINX)) \
@@ -102,8 +134,7 @@ do { \
 do { \
   if (p->extension_enabled(EXT_ZFINX)) { \
     if (xlen == 32) { \
-      uint64_t val = (value).v; \
-      WRITE_RD_PAIR(val); \
+      WRITE_RD_PAIR((value).v); \
     } else { \
       WRITE_REG(insn.rd(), (value).v); \
     } \
@@ -120,6 +151,10 @@ do { \
               if (rm > 4) throw trap_illegal_instruction(insn.bits()); \
               rm; })
 
+static inline bool is_aligned(const unsigned val, const unsigned pos)
+{
+  return pos ? (val & (pos - 1)) == 0 : true;
+}
 
 #define require_privilege(p) require(STATE.prv >= (p))
 #define require_novirt() (unlikely(STATE.v) ? throw trap_virtual_instruction(insn.bits()) : (void) 0)
@@ -130,14 +165,12 @@ do { \
 #define require_extension(s) require(p->extension_enabled(s))
 #define require_either_extension(A,B) require(p->extension_enabled(A) || p->extension_enabled(B));
 #define require_impl(s) require(p->supports_impl(s))
-#define require_fs          require(STATE.sstatus->enabled(SSTATUS_FS))
 #define require_fp          STATE.fflags->verify_permissions(insn, false)
 #define require_accelerator require(STATE.sstatus->enabled(SSTATUS_XS))
-#define require_vector_vs   require(STATE.sstatus->enabled(SSTATUS_VS))
+#define require_vector_vs   require(p->any_vector_extensions() && STATE.sstatus->enabled(SSTATUS_VS))
 #define require_vector(alu) \
   do { \
     require_vector_vs; \
-    require_extension('V'); \
     require(!P.VU.vill); \
     if (alu && !P.VU.vstart_alu) \
       require(P.VU.vstart->read() == 0); \
@@ -147,7 +180,6 @@ do { \
 #define require_vector_novtype(is_log) \
   do { \
     require_vector_vs; \
-    require_extension('V'); \
     if (is_log) \
       WRITE_VSTATUS; \
     dirty_vs_state; \
@@ -179,15 +211,18 @@ do { \
     } \
   } while (0);
 
-#define set_fp_exceptions ({ if (softfloat_exceptionFlags) { \
-                               STATE.fflags->write(STATE.fflags->read() | softfloat_exceptionFlags); \
-                             } \
-                             softfloat_exceptionFlags = 0; })
+#define raise_fp_exceptions(flags) do { if (flags) STATE.fflags->write(STATE.fflags->read() | (flags)); } while (0);
+#define set_fp_exceptions \
+  do { \
+    raise_fp_exceptions(softfloat_exceptionFlags); \
+    softfloat_exceptionFlags = 0; \
+  } while (0);
 
 #define sext32(x) ((sreg_t)(int32_t)(x))
 #define zext32(x) ((reg_t)(uint32_t)(x))
-#define sext_xlen(x) (((sreg_t)(x) << (64 - xlen)) >> (64 - xlen))
+#define sext(x, pos) (((sreg_t)(x) << (64 - (pos))) >> (64 - (pos)))
 #define zext(x, pos) (((reg_t)(x) << (64 - (pos))) >> (64 - (pos)))
+#define sext_xlen(x) sext(x, xlen)
 #define zext_xlen(x) zext(x, xlen)
 
 #define set_pc(x) \
@@ -218,14 +253,18 @@ class wait_for_interrupt_t {};
 /* Convenience wrappers to simplify softfloat code sequences */
 #define isBoxedF16(r) (isBoxedF32(r) && ((uint64_t)((r.v[0] >> 16) + 1) == ((uint64_t)1 << 48)))
 #define unboxF16(r) (isBoxedF16(r) ? (uint16_t)r.v[0] : defaultNaNF16UI)
+#define isBoxedBF16(r) isBoxedF16(r)
+#define unboxBF16(r) (isBoxedBF16(r) ? (uint16_t)r.v[0] : defaultNaNBF16UI)
 #define isBoxedF32(r) (isBoxedF64(r) && ((uint32_t)((r.v[0] >> 32) + 1) == 0))
 #define unboxF32(r) (isBoxedF32(r) ? (uint32_t)r.v[0] : defaultNaNF32UI)
 #define isBoxedF64(r) ((r.v[1] + 1) == 0)
 #define unboxF64(r) (isBoxedF64(r) ? r.v[0] : defaultNaNF64UI)
 inline float16_t f16(uint16_t v) { return { v }; }
+inline bfloat16_t bf16(uint16_t v) { return { v }; }
 inline float32_t f32(uint32_t v) { return { v }; }
 inline float64_t f64(uint64_t v) { return { v }; }
 inline float16_t f16(freg_t r) { return f16(unboxF16(r)); }
+inline bfloat16_t bf16(freg_t r) { return bf16(unboxBF16(r)); }
 inline float32_t f32(freg_t r) { return f32(unboxF32(r)); }
 inline float64_t f64(freg_t r) { return f64(unboxF64(r)); }
 inline float128_t f128(freg_t r) { return r; }
@@ -310,3 +349,23 @@ inline long double to_f(float128_t f) { long double r; memcpy(&r, &f, sizeof(r))
   reg_t h##field = get_field(STATE.henvcfg->read(), HENVCFG_##field)
 
 #endif
+
+#define software_check(x, tval) (unlikely(!(x)) ? throw trap_software_check(tval) : (void) 0)
+#define ZICFILP_xLPE(v, prv) \
+  ({ \
+    reg_t lpe = 0ULL; \
+    if (p->extension_enabled(EXT_ZICFILP)) { \
+      DECLARE_XENVCFG_VARS(LPE); \
+      const reg_t msecLPE = get_field(STATE.mseccfg->read(), MSECCFG_MLPE); \
+      switch (prv) { \
+      case PRV_U: lpe = p->extension_enabled('S') ? sLPE : mLPE; break; \
+      case PRV_S: lpe = (v) ? hLPE : mLPE; break; \
+      case PRV_M: lpe = msecLPE; break; \
+      default: abort(); \
+      } \
+    } \
+    lpe; \
+  })
+#define ZICFILP_IS_LP_EXPECTED(reg_num) \
+  (((reg_num) != 1 && (reg_num) != 5 && (reg_num) != 7) ? \
+   elp_t::LP_EXPECTED : elp_t::NO_LP_EXPECTED)

@@ -51,15 +51,23 @@ struct match_result_t {
   action_t action;
 };
 
+typedef enum {
+  HIT_FALSE = 0,
+  HIT_BEFORE = 1,
+  HIT_AFTER = 2,
+  HIT_IMMEDIATELY_AFTER = 3
+} hit_t;
+
 class matched_t
 {
   public:
-    matched_t(triggers::operation_t operation, reg_t address, action_t action) :
-      operation(operation), address(address), action(action) {}
+    matched_t(triggers::operation_t operation, reg_t address, action_t action, bool gva) :
+      operation(operation), address(address), action(action), gva(gva) {}
 
     triggers::operation_t operation;
     reg_t address;
     action_t action;
+    bool gva;
 };
 
 class trigger_t {
@@ -84,12 +92,13 @@ public:
 
   virtual std::optional<match_result_t> detect_memory_access_match(processor_t UNUSED * const proc,
       operation_t UNUSED operation, reg_t UNUSED address, std::optional<reg_t> UNUSED data) noexcept { return std::nullopt; }
-  virtual std::optional<match_result_t> detect_icount_match(processor_t UNUSED * const proc) { return std::nullopt; }
+  virtual std::optional<match_result_t> detect_icount_fire(processor_t UNUSED * const proc) { return std::nullopt; }
+  virtual void detect_icount_decrement(processor_t UNUSED * const proc) {}
   virtual std::optional<match_result_t> detect_trap_match(processor_t UNUSED * const proc, const trap_t UNUSED & t) noexcept { return std::nullopt; }
 
 protected:
   static action_t legalize_action(reg_t val, reg_t action_mask, reg_t dmode_mask) noexcept;
-  bool common_match(processor_t * const proc) const noexcept;
+  bool common_match(processor_t * const proc, bool use_prev_prv = false) const noexcept;
   reg_t tdata2;
 
   bool vs = false;
@@ -100,7 +109,7 @@ protected:
 
 private:
   unsigned legalize_mhselect(bool h_enabled) const noexcept;
-  bool mode_match(state_t * const state) const noexcept;
+  bool mode_match(reg_t prv, bool v) const noexcept;
   bool textra_match(processor_t * const proc) const noexcept;
 
   struct mhselect_interpretation {
@@ -202,6 +211,7 @@ public:
   virtual bool get_store() const override { return store; }
   virtual bool get_load() const override { return load; }
   virtual action_t get_action() const override { return action; }
+  virtual void set_hit(hit_t val) = 0;
 
   virtual std::optional<match_result_t> detect_memory_access_match(processor_t * const proc,
       operation_t operation, reg_t address, std::optional<reg_t> data) noexcept override;
@@ -210,11 +220,10 @@ private:
   bool simple_match(unsigned xlen, reg_t value) const;
 
 protected:
-  static match_t legalize_match(reg_t val) noexcept;
+  static match_t legalize_match(reg_t val, reg_t maskmax) noexcept;
   static bool legalize_timing(reg_t val, reg_t timing_mask, reg_t select_mask, reg_t execute_mask, reg_t load_mask) noexcept;
   bool dmode = false;
   action_t action = ACTION_DEBUG_EXCEPTION;
-  bool hit = false;
   bool select = false;
   bool timing = false;
   bool chain = false;
@@ -228,12 +237,23 @@ class mcontrol_t : public mcontrol_common_t {
 public:
   virtual reg_t tdata1_read(const processor_t * const proc) const noexcept override;
   virtual void tdata1_write(processor_t * const proc, const reg_t val, const bool allow_chain) noexcept override;
+
+  virtual void set_hit(hit_t val) override { hit = val != HIT_FALSE; }
+
+private:
+  bool hit = false;
+  const reg_t maskmax = 0;
 };
 
 class mcontrol6_t : public mcontrol_common_t {
 public:
   virtual reg_t tdata1_read(const processor_t * const proc) const noexcept override;
   virtual void tdata1_write(processor_t * const proc, const reg_t val, const bool allow_chain) noexcept override;
+
+  virtual void set_hit(hit_t val) override { hit = val; }
+
+private:
+  hit_t hit = HIT_FALSE;
 };
 
 class icount_t : public trigger_t {
@@ -246,14 +266,15 @@ public:
   virtual bool icount_check_needed() const override { return count > 0 || pending; }
   virtual void stash_read_values() override;
 
-  virtual std::optional<match_result_t> detect_icount_match(processor_t * const proc) noexcept override;
+  virtual std::optional<match_result_t> detect_icount_fire(processor_t * const proc) noexcept override;
+  virtual void detect_icount_decrement(processor_t * const proc) noexcept override;
 
 private:
-  bool dmode;
-  bool hit;
-  unsigned count, count_read_value;
-  bool pending, pending_read_value;
-  action_t action;
+  bool dmode = false;
+  bool hit = false;
+  unsigned count = 1, count_read_value = 1;
+  bool pending = false, pending_read_value = false;
+  action_t action = (action_t)0;
 };
 
 class module_t {

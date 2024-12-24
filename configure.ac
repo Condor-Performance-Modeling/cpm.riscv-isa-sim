@@ -72,11 +72,11 @@ AC_C_BIGENDIAN
 
 AC_MSG_CHECKING([for stf_lib submodule])
 
-if test -d "stf_lib" && test -f "stf_lib/.git"; then
+if test -d "${srcdir}/stf_lib" && test -f "${srcdir}/stf_lib/.git"; then
     AC_MSG_RESULT([found])
 else
     AC_MSG_NOTICE([stf_lib submodule not found or incomplete. Initializing and updating...])
-    if ! git submodule update --init --recursive stf_lib; then
+    if ! (cd "${srcdir}" && git submodule update --init --recursive); then
         AC_MSG_ERROR([Failed to initialize and update stf_lib submodule. Ensure git is available and the submodule is correctly configured.])
     fi
 fi

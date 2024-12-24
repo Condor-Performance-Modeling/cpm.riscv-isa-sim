@@ -5108,13 +5108,13 @@ printf "%s\n" "#define AC_APPLE_UNIVERSAL_BUILD 1" >>confdefs.h
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for stf_lib submodule" >&5
 printf %s "checking for stf_lib submodule... " >&6; }
 
-if test -d "stf_lib" && test -f "stf_lib/.git"; then
+if test -d "${srcdir}/stf_lib" && test -f "${srcdir}/stf_lib/.git"; then
     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: found" >&5
 printf "%s\n" "found" >&6; }
 else
     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: stf_lib submodule not found or incomplete. Initializing and updating..." >&5
 printf "%s\n" "$as_me: stf_lib submodule not found or incomplete. Initializing and updating..." >&6;}
-    if ! git submodule update --init --recursive stf_lib; then
+    if ! (cd "${srcdir}" && git submodule update --init --recursive); then
         as_fn_error $? "Failed to initialize and update stf_lib submodule. Ensure git is available and the submodule is correctly configured." "$LINENO" 5
     fi
 fi

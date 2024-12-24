@@ -1,10 +1,25 @@
-This is a fork. Remember to 'push origin master' (not main), in this repo.
-
 Spike RISC-V ISA Simulator
 ============================
 
+Preface
+-------------
+
+This fork of riscv-isa-sim (aka Spike) has support for STF trace 
+generation.
+
+The contributors to this work were:
+
+Stan Iwan, on behalf of Condor Computing
+Jeff Nye, Condor Computing
+
+The STF support is on the branch `spike_dev`
+
+The master branch is kept unmodified to simplify merges with upstream.
+
+
 About
 -------------
+
 
 Spike, the RISC-V ISA Simulator, implements a functional model of one or more
 RISC-V harts.  It is named after the golden spike used to celebrate the
@@ -95,6 +110,9 @@ Spike's principal public API is the RISC-V ISA.  _The C++ interface to Spike's
 internals is **not** considered a public API at this time_, and
 backwards-incompatible changes to this interface _will_ be made without
 incrementing the major version number.
+
+If your system uses the `yum` package manager, you can substitute
+`yum install dtc` for the first step.
 
 Build Steps
 ---------------

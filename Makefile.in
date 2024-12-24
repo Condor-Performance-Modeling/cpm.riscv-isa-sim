@@ -29,7 +29,7 @@
 % : SCCS/s.%
 
 # Default is to build the prereqs of the all target (defined at bottom)
-default : all
+default : all $(STF_DEP)
 .PHONY : default
 
 project_name := @PACKAGE_TARNAME@
@@ -73,6 +73,18 @@ sprojs_include := -iquote . -I$(src_dir) $(addprefix -iquote $(src_dir)/, $(spro
 VPATH := $(addprefix $(src_dir)/, $(sprojs_enabled))
 
 #-------------------------------------------------------------------------
+# STF LIB
+#-------------------------------------------------------------------------
+
+STF = $(src_dir)/stf_lib
+STF_INC = -I$(STF)
+STF_LIB = -L$(STF)/build/lib -lstf -lzstd
+STF_DEP = $(STF)/build/lib/libstf.a
+
+CPPFLAGS += $(STF_INC)
+LDFLAGS += $(STF_LIB)
+
+#-------------------------------------------------------------------------
 # Programs and flags 
 #-------------------------------------------------------------------------
 
@@ -93,7 +105,7 @@ VPATH := $(addprefix $(src_dir)/, $(sprojs_enabled))
 # These all appear on the command line, from lowest precedence to
 # highest.
 
-default-CFLAGS   := -DPREFIX=\"$(prefix)\" -Wall -Wno-unused -Wno-nonportable-include-path -g -O2 -fPIC
+default-CFLAGS   := -DPREFIX=\"$(prefix)\" -Wall -Wno-unused -fPIC -DNDEBUG -O3
 default-CXXFLAGS := $(default-CFLAGS) -std=c++2a
 
 mcppbs-CPPFLAGS := @CPPFLAGS@
@@ -123,7 +135,7 @@ all-link-flags := $(mcppbs-LDFLAGS) $(LDFLAGS)
 
 comma := ,
 LD            := $(CXX)
-LIBS          := @LIBS@ @BOOST_ASIO_LIB@ @BOOST_REGEX_LIB@
+LIBS          := @LIBS@ @BOOST_ASIO_LIB@ @BOOST_REGEX_LIB@ -lstf -lzstd
 LINK          := $(LD) -L. $(all-link-flags) -Wl,-rpath,$(install_libs_dir) $(patsubst -L%,-Wl$(comma)-rpath$(comma)%,$(filter -L%,$(LDFLAGS)))
 
 # Library creation
@@ -495,6 +507,13 @@ junk += $(project_name)-*.tar.gz
 
 all : $(install_hdrs) $(install_libs) $(install_exes)
 .PHONY : all
+
+$(STF_DEP):
+	@echo "Building STF_LIB at $(STF)/build/lib"
+	@mkdir -p $(STF)/build
+	@cd $(STF)/build && \
+        cmake .. -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
+        -DCMAKE_BUILD_TYPE=FastDebug && make -j32
 
 #-------------------------------------------------------------------------
 # Makefile debugging

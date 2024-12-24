@@ -80,6 +80,18 @@ public:
 
   size_t nprocs() const { return hartids.size(); }
   size_t max_hartid() const { return hartids.back(); }
+
+  //stf_trace_options
+  std::string stf_trace{""};
+  bool        stf_exit_on_stop_opc{false};
+  bool        stf_memrecord_size_in_bits{false};
+  bool        stf_trace_register_state{false};
+  bool        stf_disable_memory_records{false};
+  std::string stf_priv_modes{"USHM"};
+  bool        stf_force_zero_sha{false};
+  bool        stf_insn_num_tracing{false};
+  uint64_t    stf_insn_start{0};
+  uint64_t    stf_insn_length{UINT64_MAX};
 };
 
 #endif

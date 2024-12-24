@@ -737,6 +737,8 @@ with_boost
 with_boost_libdir
 with_boost_asio
 with_boost_regex
+with_isa
+with_priv
 with_target
 enable_dual_endian
 '
@@ -1401,6 +1403,9 @@ Optional Packages:
                           use the Regex library from boost - it is possible to
                           specify a certain library for the linker e.g.
                           --with-boost-regex=boost_regex-gcc-mt-d-1_33_1
+  --with-isa=RV64IMAFDC_zicntr_zihpm
+                          Sets the default RISC-V ISA
+  --with-priv=MSU         Sets the default RISC-V privilege modes supported
   --with-target=riscv64-unknown-elf
                           Sets the default target config
 
@@ -5097,6 +5102,38 @@ printf "%s\n" "#define AC_APPLE_UNIVERSAL_BUILD 1" >>confdefs.h
 
 
 #-------------------------------------------------------------------------
+# Check for the stf_lib submodule
+#-------------------------------------------------------------------------
+
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for stf_lib submodule" >&5
+printf %s "checking for stf_lib submodule... " >&6; }
+
+if test -d "stf_lib" && test -f "stf_lib/.git"; then
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: found" >&5
+printf "%s\n" "found" >&6; }
+else
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: stf_lib submodule not found or incomplete. Initializing and updating..." >&5
+printf "%s\n" "$as_me: stf_lib submodule not found or incomplete. Initializing and updating..." >&6;}
+    if ! git submodule update --init --recursive stf_lib; then
+        as_fn_error $? "Failed to initialize and update stf_lib submodule. Ensure git is available and the submodule is correctly configured." "$LINENO" 5
+    fi
+fi
+
+#-------------------------------------------------------------------------
+# Configure and build stf_lib
+#-------------------------------------------------------------------------
+
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: Configuring and building stf_lib submodule" >&5
+printf "%s\n" "$as_me: Configuring and building stf_lib submodule" >&6;}
+STF_LIB_BUILD_DIR="${srcdir}/stf_lib/release"
+if test ! -d "$STF_LIB_BUILD_DIR"; then
+    mkdir -p "$STF_LIB_BUILD_DIR" || as_fn_error $? "Failed to create build directory for stf_lib" "$LINENO" 5
+fi
+
+(cd "$STF_LIB_BUILD_DIR" && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)) || \
+    as_fn_error $? "Failed to build stf_lib submodule" "$LINENO" 5
+
+#-------------------------------------------------------------------------
 # MCPPBS specific program checks
 #-------------------------------------------------------------------------
 # These macros check to see if we can do a stow-based install and also
@@ -6552,6 +6589,34 @@ then :
   printf "%s\n" "#define HAVE_LIBBOOST_REGEX 1" >>confdefs.h
 
   LIBS="-lboost_regex $LIBS"
+
+fi
+
+
+
+# Check whether --with-isa was given.
+if test ${with_isa+y}
+then :
+  withval=$with_isa;
+printf "%s\n" "#define DEFAULT_ISA \"$withval\"" >>confdefs.h
+
+else $as_nop
+
+printf "%s\n" "#define DEFAULT_ISA \"RV64IMAFDC_zicntr_zihpm\"" >>confdefs.h
+
+fi
+
+
+
+# Check whether --with-priv was given.
+if test ${with_priv+y}
+then :
+  withval=$with_priv;
+printf "%s\n" "#define DEFAULT_PRIV \"$withval\"" >>confdefs.h
+
+else $as_nop
+
+printf "%s\n" "#define DEFAULT_PRIV \"MSU\"" >>confdefs.h
 
 fi
 

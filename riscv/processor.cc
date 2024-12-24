@@ -27,6 +27,14 @@
 # pragma GCC diagnostic ignored "-Wunused-variable"
 #endif
 
+//#include "sim_v5.h"
+//#include "cosim_comparator.h"
+//#include "processor_v5.h"
+//#include "cosim_parser.h"
+//#include "tilelink.h"
+
+#include "spike_stf.h"
+
 #undef STATE
 #define STATE state
 
@@ -608,6 +616,28 @@ void processor_t::disasm(insn_t insn)
   } else {
     executions++;
   }
+}
+
+void processor_t::handle_stf_tracing(insn_t insn)
+{
+  uint64_t bits = insn.bits();
+  const char* sym = get_symbol(state.pc);
+  unsigned max_xlen = isa.get_max_xlen();
+
+  bool trace_trigger_detected = false;
+  bool old_tracing_status = stf_macro_tracing_active;
+  bool new_tracing_status = stf_trace_trigger(this, insn);
+
+  trace_trigger_detected = old_tracing_status != new_tracing_status;
+
+  if(stf_macro_tracing_active && !trace_trigger_detected)
+  {
+    stf_trace_element(this, insn);
+  }
+
+  last_pc_stf = state.pc;
+  last_bits_stf = bits;
+  executions_stf = 1;
 }
 
 int processor_t::paddr_bits()

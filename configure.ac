@@ -67,6 +67,34 @@ AC_DEFINE_UNQUOTED(DTC, ["dtc"], [Executable name of device-tree-compiler])
 AC_C_BIGENDIAN
 
 #-------------------------------------------------------------------------
+# Check for the stf_lib submodule
+#-------------------------------------------------------------------------
+
+AC_MSG_CHECKING([for stf_lib submodule])
+
+if test -d "stf_lib" && test -f "stf_lib/.git"; then
+    AC_MSG_RESULT([found])
+else
+    AC_MSG_NOTICE([stf_lib submodule not found or incomplete. Initializing and updating...])
+    if ! git submodule update --init --recursive stf_lib; then
+        AC_MSG_ERROR([Failed to initialize and update stf_lib submodule. Ensure git is available and the submodule is correctly configured.])
+    fi
+fi
+
+#-------------------------------------------------------------------------
+# Configure and build stf_lib
+#-------------------------------------------------------------------------
+
+AC_MSG_NOTICE([Configuring and building stf_lib submodule])
+STF_LIB_BUILD_DIR="${srcdir}/stf_lib/release"
+if test ! -d "$STF_LIB_BUILD_DIR"; then
+    mkdir -p "$STF_LIB_BUILD_DIR" || AC_MSG_ERROR([Failed to create build directory for stf_lib])
+fi
+
+(cd "$STF_LIB_BUILD_DIR" && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)) || \
+    AC_MSG_ERROR([Failed to build stf_lib submodule])
+
+#-------------------------------------------------------------------------
 # MCPPBS specific program checks
 #-------------------------------------------------------------------------
 # These macros check to see if we can do a stow-based install and also

@@ -37,6 +37,7 @@ riscv_install_hdrs = \
 	memtracer.h \
 	mmu.h \
 	platform.h \
+	spike_stf.h \
 	processor.h \
 	rocc.h \
 	sim.h \
@@ -49,6 +50,7 @@ riscv_precompiled_hdrs = \
 	insn_template.h \
 
 riscv_srcs = \
+	spike_stf.cc \
 	processor.cc \
 	execute.cc \
 	dts.cc \

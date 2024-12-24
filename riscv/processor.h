@@ -406,6 +406,8 @@ private:
   void take_trigger_action(triggers::action_t action, reg_t breakpoint_tval, reg_t epc, bool virt);
   void disasm(insn_t insn); // disassemble and print an instruction
   void register_insn(insn_desc_t, bool);
+  // disassemble and stf trace instruction
+  void handle_stf_tracing(insn_t insn);
   int paddr_bits();
 
   void enter_debug_mode(uint8_t cause, uint8_t ext_cause);
@@ -424,6 +426,9 @@ private:
 
   // Track repeated executions for processor_t::disasm()
   uint64_t last_pc, last_bits, executions;
+
+  // Track repeated executions for processor_t::handle_stf_logging()
+  uint64_t last_pc_stf, last_bits_stf, executions_stf;
 public:
   entropy_source es; // Crypto ISE Entropy source.
 
@@ -433,6 +438,15 @@ public:
 
   vectorUnit_t VU;
   triggers::module_t TM;
+
+  // STF Tracing
+  //HERE
+  bool stf_macro_tracing_active  {false};
+  bool stf_trace_open {false};
+  uint64_t stf_num_traced {0};
+
+  uint64_t get_last_pc_stf() { return last_pc_stf; }
+
 };
 
 #endif

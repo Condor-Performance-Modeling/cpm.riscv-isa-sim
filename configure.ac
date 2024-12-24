@@ -95,6 +95,19 @@ fi
     AC_MSG_ERROR([Failed to build stf_lib submodule])
 
 #-------------------------------------------------------------------------
+# Add stf_lib to linker flags
+#-------------------------------------------------------------------------
+
+STF_LIB_PATH="${srcdir}/stf_lib/release/lib"
+if test -f "${STF_LIB_PATH}/libstf.a"; then
+    AC_MSG_NOTICE([Found libstf.a at ${STF_LIB_PATH}])
+    LDFLAGS="-L${STF_LIB_PATH} $LDFLAGS"
+    LIBS="-lstf $LIBS"
+else
+    AC_MSG_ERROR([libstf.a not found in ${STF_LIB_PATH}. Ensure stf_lib is built correctly.])
+fi
+
+#-------------------------------------------------------------------------
 # MCPPBS specific program checks
 #-------------------------------------------------------------------------
 # These macros check to see if we can do a stow-based install and also

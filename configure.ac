@@ -91,7 +91,11 @@ if test ! -d "$STF_LIB_BUILD_DIR"; then
     mkdir -p "$STF_LIB_BUILD_DIR" || AC_MSG_ERROR([Failed to create build directory for stf_lib])
 fi
 
-(cd "$STF_LIB_BUILD_DIR" && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)) || \
+# TODO - re-enable the slow compile/fast execute build
+#(cd "$STF_LIB_BUILD_DIR" && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)) || \
+
+# TODO - disable the faster compile/slower execute build
+(cd "$STF_LIB_BUILD_DIR" && cmake .. -DCMAKE_BUILD_TYPE=FastDebug -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF && make -j$(nproc)) || \
     AC_MSG_ERROR([Failed to build stf_lib submodule])
 
 #-------------------------------------------------------------------------

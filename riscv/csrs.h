@@ -17,8 +17,6 @@
 #include <cassert>
 // For std::optional
 #include <optional>
-// For std::function
-#include <functional>
 
 class processor_t;
 struct state_t;

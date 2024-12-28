@@ -426,9 +426,6 @@ private:
 
   // Track repeated executions for processor_t::disasm()
   uint64_t last_pc, last_bits, executions;
-
-  // Track repeated executions for processor_t::handle_stf_logging()
-  uint64_t last_pc_stf, last_bits_stf, executions_stf;
 public:
   entropy_source es; // Crypto ISE Entropy source.
 
@@ -438,15 +435,6 @@ public:
 
   vectorUnit_t VU;
   triggers::module_t TM;
-
-  // STF Tracing
-  //HERE
-  bool stf_macro_tracing_active  {false};
-  bool stf_trace_open {false};
-  uint64_t stf_num_traced {0};
-
-  uint64_t get_last_pc_stf() { return last_pc_stf; }
-
 };
 
 #endif

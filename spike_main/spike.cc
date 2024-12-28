@@ -8,6 +8,7 @@
 #include "remote_bitbang.h"
 #include "cachesim.h"
 #include "extension.h"
+#include "stf_options.h"
 #include <dlfcn.h>
 #include <fesvr/option_parser.h>
 #include <stdexcept>
@@ -21,8 +22,6 @@
 #include <cinttypes>
 #include <sstream>
 #include "../VERSION"
-
-bool log_pte = false;
 
 static void help(int exit_code = 1)
 {
@@ -58,7 +57,6 @@ static void help(int exit_code = 1)
   fprintf(stderr, "                          specify --device=<name>,<args> to pass down extra args.\n");
   fprintf(stderr, "  --log-cache-miss      Generate a log of cache miss\n");
   fprintf(stderr, "  --log-commits         Generate a log of commits info\n");
-  fprintf(stderr, "  --log-pte             Enable logging PTE details\n");
   fprintf(stderr, "  --extension=<name>    Specify RoCC Extension\n");
   fprintf(stderr, "                          This flag can be used multiple times.\n");
   fprintf(stderr, "  --extlib=<name>       Shared library to load\n");
@@ -88,32 +86,7 @@ static void help(int exit_code = 1)
   fprintf(stderr, "  --dm-no-impebreak     Debug module won't support implicit ebreak in program buffer\n");
   fprintf(stderr, "  --blocksz=<size>      Cache block size (B) for CMO operations(powers of 2) [default 64]\n");
 
-  //stf_trace options
-  fprintf(stderr, "  --stf_trace <file>       Dump an STF trace to the given file\n");
-  fprintf(stderr, "                           Use .zstf as the file extension for compressed trace\n");
-  fprintf(stderr, "                           output. Use .stf for uncompressed output\n");
-  fprintf(stderr, "  --stf_exit_on_stop_opc   Terminate the simulation after detecting a STOP_TRACE opcode\n");
-  fprintf(stderr, "                           Using this switch will disable non-contiguous region tracing.\n");
-  fprintf(stderr, "                           The first STOP_TRACE opcode will terminate the simulator\n");
-  fprintf(stderr, "  --stf_memrecord_size_in_bits\n");
-  fprintf(stderr, "                           Write memory access size in bits instead of bytes\n");
-  fprintf(stderr, "  --stf_trace_register_state\n");
-  fprintf(stderr, "                           Include register state in the STF (default false)\n");
-  fprintf(stderr, "  --stf_disable_memory_records\n");
-  fprintf(stderr, "                           Do not add memory records to STF trace. By default,\n");
-  fprintf(stderr, "                           memory records are always traced (default false)\n");
-  fprintf(stderr, "  --stf_priv_modes <USHM|USH|US|U>\n");
-  fprintf(stderr, "                           Specify which privilege modes to include for STF trace\n");
-  fprintf(stderr, "                           generation\n");
-  fprintf(stderr, "  --stf_force_zero_sha     Emit 0 for all SHA's in the STF header. This is a debug\n");
-  fprintf(stderr, "                           option. Also clears the dromajo version placed in the STF\n");
-  fprintf(stderr, "                           header\n");
-  fprintf(stderr, "  --stf_insn_num_tracing   Enable STF tracing based on instruction number.\n");
-  fprintf(stderr, "  --stf_insn_start         Starts STF tracing after this number of instructions.\n");
-  fprintf(stderr, "  --stf_insn_length        Terminates STF tracing after this number of\n");
-  fprintf(stderr, "                           instructions from stf_insn_start.\n");
-
-
+  stfopts->stf_help();
   exit(exit_code);
 }
 
@@ -481,36 +454,10 @@ int main(int argc, char** argv)
   });
 
   //stf_trace options
-  parser.option(0, "stf_trace", 1, [&](const char* s){
-    cfg.stf_trace = s;
-  });
-  parser.option(0, "stf_exit_on_stop_opc", 0, [&](const char UNUSED *s){
-    cfg.stf_exit_on_stop_opc = true;
-  });
-  parser.option(0, "stf_memrecord_size_in_bits", 0, [&](const char UNUSED *s){
-    cfg.stf_memrecord_size_in_bits = true;
-  });
-  parser.option(0, "stf_trace_register_state", 0, [&](const char UNUSED *s){
-    cfg.stf_trace_register_state = true;
-  });
-  parser.option(0, "stf_disable_memory_records", 0, [&](const char UNUSED *s){
-    cfg.stf_disable_memory_records = true;
-  });
-  parser.option(0, "stf_priv_modes", 1, [&](const char* s){
-    cfg.stf_priv_modes = s;
-  });
-  parser.option(0, "stf_force_zero_sha", 0, [&](const char UNUSED *s){
-    cfg.stf_force_zero_sha = true;
-  });
-  parser.option(0, "stf_insn_num_tracing", 0, [&](const char UNUSED *s){
-    cfg.stf_insn_num_tracing = true;
-  });
-  parser.option(0, "stf_insn_start", 1, [&](const char* s){
-      cfg.stf_insn_start = strtoull(s, nullptr, 0);
-  });
-  parser.option(0, "stf_insn_length", 1, [&](const char* s){
-      cfg.stf_insn_length = strtoull(s, nullptr, 0);
-  });
+  if(!stfopts->set_options(parser,cfg)) {
+    fprintf(stderr,"-E: stf options conflict detected with standard options\n");
+    exit(1);
+  }
 
   auto argv1 = parser.parse(argv);
   std::vector<std::string> htif_args(argv1, (const char*const*)argv + argc);
@@ -602,6 +549,7 @@ int main(int argc, char** argv)
   s.set_debug(debug);
   s.configure_log(log, log_commits);
   s.set_histogram(histogram);
+
 
   auto return_code = s.run();
 

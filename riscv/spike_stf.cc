@@ -1,7 +1,13 @@
 #include "spike_stf.h"
 #include "spike_stf_helpers.h"
+#include "stf_options.h"
 
+#include <iostream> 
+
+using namespace std;
 stf::STFWriter stf_writer;
+
+#define LOG_IT 0
 
 //TODO - replace with actual values
 #define SPIKE_GIT_SHA "thisistestspikegitsha"
@@ -21,7 +27,8 @@ void stf_record_state(processor_t* proc, unsigned long PC)
 
     stf_writer << stf::ForcePCRecord(PC);
 
-    if(proc->get_cfg().stf_trace_register_state)
+//    if(proc->get_cfg().stf_trace_register_state)
+    if(stfopts->stf_trace_register_state)
     {
         // Record integer registers
         for(int rn = 0; rn < NUM_REGISTERS; ++rn) {
@@ -46,40 +53,49 @@ bool stf_trace_trigger(processor_t* proc, insn_t insn)
 {
     auto state = proc->get_state();
 
-    bool start = START_TRACE == insn.bits() && !proc->stf_macro_tracing_active;
-    bool stop = STOP_TRACE == insn.bits() && proc->stf_macro_tracing_active;
+cout<<"HERE stf_trace_trigger"<<endl;
+    bool start = START_TRACE == insn.bits() && !stfopts->stf_macro_tracing_active;
+    bool stop = STOP_TRACE == insn.bits() && stfopts->stf_macro_tracing_active;
+//    bool start = START_TRACE == insn.bits() && !proc->stf_macro_tracing_active;
+//    bool stop = STOP_TRACE == insn.bits() && proc->stf_macro_tracing_active;
 
     if(start) {        
         std::cout << "START_TRACE detected at PC: 0x" << std::hex << state->pc << std::dec << std::endl;
-        proc->stf_macro_tracing_active = true;
+//        proc->stf_macro_tracing_active = true;
+        stfopts->stf_macro_tracing_active = true;
         stf_trace_open(proc, state->pc);
     } 
     
     if(stop) {
         std::cout << "STOP_TRACE detected at PC: 0x" << std::hex << state->pc << std::dec << std::endl;
-        proc->stf_macro_tracing_active = false;
+//        proc->stf_macro_tracing_active = false;
+        stfopts->stf_macro_tracing_active = false;
         stf_trace_close(proc, state->pc);
     }
     
-    return proc->stf_macro_tracing_active;
+//    return proc->stf_macro_tracing_active;
+    return stfopts->stf_macro_tracing_active;
 }
 
 void stf_trace_open(processor_t* proc, unsigned long PC)
 {
-    proc->stf_trace_open = true;
-    std::cout << ">>> SPIKE: Tracing Started at 0x" 
+  stfopts->stf_trace_open = true;
+//    proc->stf_trace_open = true;
+if(LOG_IT)    std::cout << ">>> SPIKE: Tracing Started at 0x" 
           << std::hex << PC << std::dec << std::endl;
 
     //s->machine->common.stf_prog_asid = (cpu->satp >> 4) & ASID_MASK; // stf_prog_asid missing in processor?
 
     if((bool)stf_writer == false)
     {
-        stf_writer.open(proc->get_cfg().stf_trace);
+//        stf_writer.open(proc->get_cfg().stf_trace);
+        stf_writer.open(stfopts->stf_trace);
 
         std::string spike_sha,stflib_sha;
         uint32_t vMajor,vMinor,vPatch;
 
-        if(proc->get_cfg().stf_force_zero_sha)
+//        if(proc->get_cfg().stf_force_zero_sha)
+        if(stfopts->stf_force_zero_sha)
         {            
             spike_sha   = "SPIKE SHA:0";
             stflib_sha = "STF_LIB SHA:0";
@@ -118,12 +134,17 @@ void stf_trace_close(processor_t* proc, unsigned long PC)
 {
     if(stf_writer) {
 
-        std::cout << ">>> SPIKE: Tracing Stopped at 0x" << std::hex << PC << std::dec << std::endl;
-        std::cout << ">>> SPIKE: Traced " << proc->stf_num_traced<< " insts\n" << std::endl;
+if(LOG_IT)        std::cout << ">>> SPIKE: Tracing Stopped at 0x" << std::hex << PC << std::dec << std::endl;
+if(LOG_IT)        std::cout << ">>> SPIKE: Traced " << stfopts->stf_num_traced<< " insts\n" << std::endl;
+//if(LOG_IT)        std::cout << ">>> SPIKE: Traced " << proc->stf_num_traced<< " insts\n" << std::endl;
 
-        proc->stf_trace_open = false;
-        proc->stf_macro_tracing_active = false;
-        proc->stf_num_traced = 0;
+//        proc->stf_trace_open = false;
+//        proc->stf_macro_tracing_active = false;
+//        proc->stf_num_traced = 0;
+
+        stfopts->stf_trace_open = false;
+        stfopts->stf_macro_tracing_active = false;
+        stfopts->stf_num_traced = 0;
 
         stf_writer.flush();
         stf_writer.close();
@@ -136,8 +157,8 @@ void stf_emit_memory_records(processor_t* proc)
 {
     auto state = proc->get_state();
 
-    std::cout << ">>> SPIKE: log_mem_read size "  << std::dec << state->log_mem_read.size() << std::dec << std::endl;
-    std::cout << ">>> SPIKE: log_mem_write size " << std::dec << state->log_mem_write.size() << std::dec << std::endl;
+if(LOG_IT)    std::cout << ">>> SPIKE: log_mem_read size "  << std::dec << state->log_mem_read.size() << std::dec << std::endl;
+if(LOG_IT)    std::cout << ">>> SPIKE: log_mem_write size " << std::dec << state->log_mem_write.size() << std::dec << std::endl;
 
     // Log memory accesses (reads and writes)
     for (const auto& mem_read : state->log_mem_read) {
@@ -187,11 +208,13 @@ void stf_emit_register_records(processor_t* proc)
 
 void stf_trace_element(processor_t* proc, insn_t insn) {
     auto state = proc->get_state();
-    bool traceable_priv_level = state->prv <= get_highest_priv_mode(proc->get_cfg().stf_priv_modes);
+//    bool traceable_priv_level = state->prv <= get_highest_priv_mode(proc->get_cfg().stf_priv_modes);
+    bool traceable_priv_level = state->prv <= get_highest_priv_mode(stfopts->stf_priv_modes);
 
     if(traceable_priv_level)
     {
-        ++proc->stf_num_traced;
+//        ++proc->stf_num_traced;
+        ++stfopts->stf_num_traced;
         const uint32_t inst_width = (insn.bits() & 0x3) == 0x3 ? 4 : 2;
         bool skip_record = false;
 
@@ -201,21 +224,25 @@ void stf_trace_element(processor_t* proc, insn_t insn) {
         }
         else
         {
-            skip_record = (state->pc != proc->get_last_pc_stf() + inst_width);
+//            skip_record = (state->pc != proc->get_last_pc_stf() + inst_width);
+            skip_record = (state->pc != stfopts->get_last_pc_stf() + inst_width);
         }
 
-        std::cout << ">>> SPIKE: Tracing PC " << std::hex << state->pc << std::dec << std::endl;
-        std::cout << ">>> SPIKE: Last PC " << std::hex << proc->get_last_pc_stf() << std::dec << std::endl;
-        std::cout << ">>> SPIKE: Inst_Width "  << inst_width << std::dec << std::endl;
-        std::cout << ">>> SPIKE: skip_record " << skip_record << std::dec << std::endl;
-        std::cout << std::endl;
+if(LOG_IT)        std::cout << ">>> SPIKE: Tracing PC " << std::hex << state->pc << std::dec << std::endl;
+//if(LOG_IT)        std::cout << ">>> SPIKE: Last PC " << std::hex << proc->get_last_pc_stf() << std::dec << std::endl;
+if(LOG_IT)        std::cout << ">>> SPIKE: Last PC " << std::hex << stfopts->get_last_pc_stf() << std::dec << std::endl;
+if(LOG_IT)        std::cout << ">>> SPIKE: Inst_Width "  << inst_width << std::dec << std::endl;
+if(LOG_IT)        std::cout << ">>> SPIKE: skip_record " << skip_record << std::dec << std::endl;
+if(LOG_IT)        std::cout << std::endl;
 
         if(!skip_record) {
-            if(!proc->get_cfg().stf_disable_memory_records) {
+//            if(!proc->get_cfg().stf_disable_memory_records) {
+            if(!stfopts->stf_disable_memory_records) {
                 stf_emit_memory_records(proc);
             }
 
-            if(proc->get_cfg().stf_trace_register_state) {
+//            if(proc->get_cfg().stf_trace_register_state) {
+            if(stfopts->stf_trace_register_state) {
                 stf_emit_register_records(proc);
             }
 

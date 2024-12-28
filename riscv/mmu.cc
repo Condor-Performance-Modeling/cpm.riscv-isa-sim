@@ -6,9 +6,6 @@
 #include "simif.h"
 #include "processor.h"
 #include "decode_macros.h"
-#include <iomanip>
-
-extern bool log_pte;
 
 mmu_t::mmu_t(simif_t* sim, endianness_t endianness, processor_t* proc)
  : sim(sim), proc(proc),

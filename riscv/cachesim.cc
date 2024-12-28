@@ -70,7 +70,7 @@ cache_sim_t::cache_sim_t(const cache_sim_t& rhs)
 
 cache_sim_t::~cache_sim_t()
 {
-  //HERE print_stats();
+  print_stats();
   delete [] tags;
 }
 

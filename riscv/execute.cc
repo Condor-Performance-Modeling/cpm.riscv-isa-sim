@@ -5,6 +5,7 @@
 #include "mmu.h"
 #include "disasm.h"
 #include "decode_macros.h"
+#include "stf_options.h"
 #include <cassert>
 
 static void commit_log_reset(processor_t* p)
@@ -164,7 +165,7 @@ static inline reg_t execute_insn_fast(processor_t* p, reg_t pc, insn_fetch_t fet
 }
 static inline reg_t execute_insn_logged(processor_t* p, reg_t pc, insn_fetch_t fetch)
 {
-  if (p->get_log_commits_enabled()) {
+  if (p->get_log_commits_enabled() || !stfopts->stf_disable_memory_records) {
     commit_log_reset(p);
     commit_log_stash_privilege(p);
   }
@@ -205,7 +206,8 @@ static inline reg_t execute_insn_logged(processor_t* p, reg_t pc, insn_fetch_t f
 bool processor_t::slow_path()
 {
   return debug || state.single_step != state.STEP_NONE || state.debug_mode ||
-         log_commits_enabled || histogram_enabled || in_wfi || check_triggers_icount;
+         log_commits_enabled || histogram_enabled || in_wfi || 
+         check_triggers_icount || !stfopts->stf_trace.empty();
 }
 
 // fetch/decode/execute loop
@@ -286,6 +288,11 @@ void processor_t::step(size_t n)
             disasm(fetch.insn);
           pc = execute_insn_logged(this, pc, fetch);
           advance_pc();
+
+          if (!stfopts->stf_trace.empty() && !state.serialized)
+          {
+            handle_stf_tracing(fetch.insn);
+          }
 
           // Resume from debug mode in critical error
           if (state.critical_error && !state.debug_mode) {

@@ -298,6 +298,7 @@ void processor_t::step(size_t n)
           // ----------------------------------------------------------
 
           pc = execute_insn_logged(this, pc, fetch);
+          ++stfhandler->executed_instructions;
           advance_pc();
 
           // Resume from debug mode in critical error
@@ -332,6 +333,7 @@ void processor_t::step(size_t n)
           }
 
           pc = execute_insn_fast(this, pc, fetch);
+          ++stfhandler->executed_instructions;
           ic_entry = ic_entry->next;
           if (unlikely(ic_entry->tag != pc))
             break;

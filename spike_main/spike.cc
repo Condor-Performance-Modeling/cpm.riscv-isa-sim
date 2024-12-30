@@ -550,8 +550,11 @@ int main(int argc, char** argv)
   s.configure_log(log, log_commits);
   s.set_histogram(histogram);
 
-
   auto return_code = s.run();
+
+  if(!stfhandler->insn_num_tracing) {
+    stfhandler->close_trace();
+  }
 
   for (auto& mem : mems)
     delete mem.second;

@@ -368,6 +368,8 @@ public:
 
   void check_if_lpad_required();
 
+  uint64_t get_last_pc() { return last_pc; }
+
 private:
   const isa_parser_t isa;
   const cfg_t * const cfg;

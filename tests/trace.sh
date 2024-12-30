@@ -19,6 +19,7 @@ DROM=../../cpm.dromajo/build/dromajo
 DOPTS="--disassemble-all --disassemble-zeroes --section=.text --section=.text.startup --section=.text.init  --section=.data -Mnumeric,no-aliases"
 ISA=rv64imafdc_zicntr_zihpm_zba_zbb_zbc_zbs
 STF="--stf_macro_tracing --stf_priv_modes USHM --stf_force_zero_sha"
+DSTF="--stf_priv_modes USHM --stf_force_zero_sha"
 # ------------------------------------------------------------------
 # bmi_sanity has 7 regions (start/stop pairs) and an extra stop at the end
 # ------------------------------------------------------------------
@@ -36,16 +37,19 @@ ELF=${ELFS[1]}
 # ------------------------------------------------------------------
 mkdir -p drom_out
 mkdir -p spike_out
+
+rm -f drom_out/*
+rm -f spike_out/*
 # ------------------------------------------------------------------
 $OBJ_DUMP $DOPTS elfs/$ELF > $ELF.objdump
 
 ##$SPIKE --isa=$ISA elfs/$ELF
 ##$SPIKE --isa=$ISA -d elfs/$ELF
 $SPIKE --isa=$ISA --stf_trace spike_out/$ELF.zstf $STF elfs/$ELF
-#$STF_DUMP spike_out/$ELF.zstf > spike_out/$ELF.stf_dump
+$STF_DUMP spike_out/$ELF.zstf > spike_out/$ELF.stf_dump
 
-
+echo "\n"
 ##$DROM --march=$ISA elfs/$ELF
 ##$DROM --march=$ISA -d elfs/$ELF
-#$DROM --march=$ISA $STF --stf_trace drom_out/$ELF.zstf elfs/$ELF
-#$STF_DUMP drom_out/$ELF.zstf > drom_out/$ELF.stf_dump
+$DROM --march=$ISA $DSTF --stf_trace drom_out/$ELF.zstf elfs/$ELF
+$STF_DUMP drom_out/$ELF.zstf > drom_out/$ELF.stf_dump

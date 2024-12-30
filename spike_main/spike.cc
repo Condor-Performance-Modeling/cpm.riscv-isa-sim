@@ -8,7 +8,7 @@
 #include "remote_bitbang.h"
 #include "cachesim.h"
 #include "extension.h"
-#include "stf_options.h"
+#include "stf_handler.h"
 #include <dlfcn.h>
 #include <fesvr/option_parser.h>
 #include <stdexcept>
@@ -86,7 +86,7 @@ static void help(int exit_code = 1)
   fprintf(stderr, "  --dm-no-impebreak     Debug module won't support implicit ebreak in program buffer\n");
   fprintf(stderr, "  --blocksz=<size>      Cache block size (B) for CMO operations(powers of 2) [default 64]\n");
 
-  stfopts->stf_help();
+  stfhandler->stf_help();
   exit(exit_code);
 }
 
@@ -454,7 +454,7 @@ int main(int argc, char** argv)
   });
 
   //stf_trace options
-  if(!stfopts->set_options(parser,cfg)) {
+  if(!stfhandler->set_options(parser,cfg)) {
     fprintf(stderr,"-E: stf options conflict detected with standard options\n");
     exit(1);
   }

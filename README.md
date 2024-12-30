@@ -16,10 +16,8 @@ The STF support is on the branch `spike_dev`
 
 The master branch is kept unmodified to simplify merges with upstream.
 
-
 About
 -------------
-
 
 Spike, the RISC-V ISA Simulator, implements a functional model of one or more
 RISC-V harts.  It is named after the golden spike used to celebrate the

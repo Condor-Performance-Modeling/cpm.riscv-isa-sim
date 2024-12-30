@@ -27,10 +27,11 @@
 # pragma GCC diagnostic ignored "-Wunused-variable"
 #endif
 
-#include "stf_options.h"
+#include "stf_handler.h"
 #include "spike_stf.h"
-StfOptions *StfOptions::instance = 0;
-std::shared_ptr<StfOptions> stfopts(StfOptions::getInstance());
+
+StfHandler *StfHandler::instance = 0;
+std::shared_ptr<StfHandler> stfhandler(StfHandler::getInstance());
 
 #undef STATE
 #define STATE state
@@ -615,28 +616,28 @@ void processor_t::disasm(insn_t insn)
   }
 }
 
-void processor_t::handle_stf_tracing(insn_t insn)
-{
-  uint64_t bits = insn.bits();
-  const char* sym = get_symbol(state.pc);
-  unsigned max_xlen = isa.get_max_xlen();
-
-  bool trace_trigger_detected = false;
-  bool old_tracing_status = stfopts->stf_macro_tracing_active;
-  bool new_tracing_status = stf_trace_trigger(this, insn);
-
-  trace_trigger_detected = old_tracing_status != new_tracing_status;
-
-  if(stfopts->stf_macro_tracing_active && !trace_trigger_detected)
-  {
-    stf_trace_element(this, insn);
-  }
-
-  stfopts->last_pc_stf = state.pc;
-  stfopts->last_bits_stf = bits;
-
-  stfopts->executions_stf = 1;
-}
+//void processor_t::handle_stf_tracing(insn_t insn)
+//{
+//  uint64_t bits = insn.bits();
+//  const char* sym = get_symbol(state.pc);
+//  unsigned max_xlen = isa.get_max_xlen();
+//
+//  bool trace_trigger_detected = false;
+//  bool old_tracing_status = stfhandler->stf_macro_tracing_active;
+//  bool new_tracing_status = stf_trace_trigger(this, insn);
+//
+//  trace_trigger_detected = old_tracing_status != new_tracing_status;
+//
+//  if(stfhandler->stf_macro_tracing_active && !trace_trigger_detected)
+//  {
+//    stf_trace_element(this, insn);
+//  }
+//
+//  stfhandler->last_pc_stf = state.pc;
+//  stfhandler->last_bits_stf = bits;
+//
+//  stfhandler->executions_stf = 1;
+//}
 
 int processor_t::paddr_bits()
 {

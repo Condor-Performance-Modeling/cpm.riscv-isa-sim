@@ -67,7 +67,18 @@ struct StfHandler
     fprintf(stderr,"-I: Terminating simulator: %s\n",s.c_str());
     exit(0);
   }
-
+  // ---------------------------------------------------------------- 
+  // ---------------------------------------------------------------- 
+  void update_state(processor_t *proc,uint32_t bits,reg_t pc,reg_t npc)
+  {
+    last_pc  = pc; //TODO may not be needed
+    last_npc = npc;//ditto
+    insn_bytes = (bits & 0x3) == 0x3 ? 4 : 2;
+    is_taken_branch = false;
+    if(pc != npc && npc > 0x1010 && pc > 0x1010) {
+      is_taken_branch = npc != pc + insn_bytes;
+    }
+  }
   // ---------------------------------------------------------------- 
   // ---------------------------------------------------------------- 
   void trace_insn(processor_t *proc,insn_fetch_t &fetch,
@@ -210,13 +221,19 @@ struct StfHandler
       trace_element = true;
 
       if(trace_element) {
-        uint32_t insn_bytes = (fetch.insn.bits() & 0x3) == 0x3 ? 4 : 2;
+        //uint32_t insn_bytes = (fetch.insn.bits() & 0x3) == 0x3 ? 4 : 2;
 
         bool skip_record = false;
 
-//        if(stf_last_pc != proc->get_last_pc() + insn_bytes) {
-//          stf_writer << stf::InstPCTargetRecord(PC);
-//        }
+//if(HERE_cnt > 64) exit(1);
+//++HERE_cnt;
+//fprintf(stderr,"PC 0x%lx STF PC 0x%lx\n",proc->get_last_pc(),last_pc);
+
+        if(is_taken_branch) {
+//        if(last_pc != proc->get_last_pc() + insn_bytes) {
+//fprintf(stderr,"PC 0x%lx npc 0x%lx\n",last_pc,last_npc);
+          stf_writer << stf::InstPCTargetRecord(last_npc);
+        }
 
         // In dromajo there was a possibility that the current instruction
         // will cause a page fault/timer interrupt/process switch so
@@ -610,7 +627,10 @@ public:
                                 //or in the range insn_start/insn_count
 //HERE
 int HERE_cnt = 0;
-  uint64_t stf_last_pc{0};
+  uint64_t last_pc{0};
+  uint64_t last_npc{0};
+  uint32_t insn_bytes{0};
+  bool     is_taken_branch{false};
   uint64_t executed_instructions{0};
   uint64_t traced_instructions{0};
 

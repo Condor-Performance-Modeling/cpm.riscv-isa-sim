@@ -10,7 +10,8 @@
 # Tool paths
 # ------------------------------------------------------------------
 OBJ_DUMP=$TOP/riscv64-unknown-elf/bin/riscv64-unknown-elf-objdump
-STF_DUMP=/data/tools/bin/stf_record_dump
+STF_RDUMP=/data/tools/bin/stf_record_dump
+STF_DUMP=/data/tools/bin/stf_dump
 SPIKE=../build/spike
 DROM=../../cpm.dromajo/build/dromajo
 # ------------------------------------------------------------------
@@ -24,28 +25,32 @@ DSTF="--march=rv64gc_zba_zbb_zbc_zbs --stf_priv_modes USHM --stf_force_zero_sha 
 # ------------------------------------------------------------------
 # bmi_sanity has 7 regions (start/stop pairs) and an extra stop at the end
 # ------------------------------------------------------------------
-# Traces that are nearly identical to dromajo
-#"simple.rv64gc_with_zbx.bare.riscv"
 
 ELFS=(
 "simple.rv64gc_with_zbx.bare.riscv"
 
 "bmi_pmp.rv64gc_nozbx.bare.riscv"
-"bmi_median.rv64gc_nozbx.bare.riscv"
-"bmi_dhrystone.rv64gc_nozbx.bare.riscv"
-"bmi_sanity.rv64gc_nozbx.bare.riscv"
-"coremark_10.rv64gc_nozbx.bare.riscv"
-"dhrystone_opt1.10.rv64gc_nozbx.bare.riscv"
-"dhrystone_opt2.10.rv64gc_nozbx.bare.riscv"
-"dhrystone_opt3.10.rv64gc_nozbx.bare.riscv"
-
 "bmi_pmp.rv64gc_with_zbx.bare.riscv"
+
+"bmi_median.rv64gc_nozbx.bare.riscv"
 "bmi_median.rv64gc_with_zbx.bare.riscv"
+
+"bmi_dhrystone.rv64gc_nozbx.bare.riscv"
 "bmi_dhrystone.rv64gc_with_zbx.bare.riscv"
+
+"bmi_sanity.rv64gc_nozbx.bare.riscv"
 "bmi_sanity.rv64gc_with_zbx.bare.riscv"
+
+"coremark_10.rv64gc_nozbx.bare.riscv"
 "coremark_10.rv64gc_with_zbx.bare.riscv"
+
+"dhrystone_opt1.10.rv64gc_nozbx.bare.riscv"
 "dhrystone_opt1.10.rv64gc_with_zbx.bare.riscv"
+
+"dhrystone_opt2.10.rv64gc_nozbx.bare.riscv"
 "dhrystone_opt2.10.rv64gc_with_zbx.bare.riscv"
+
+"dhrystone_opt3.10.rv64gc_nozbx.bare.riscv"
 "dhrystone_opt3.10.rv64gc_with_zbx.bare.riscv"
 )
 
@@ -64,10 +69,13 @@ echo "${ELF}"
 
 echo "SPIKE+STF"
 $SPIKE -l --log=exe.log --isa=$ISA --stf_trace spike_out/$ELF.zstf $STF elfs/$ELF
-$STF_DUMP spike_out/$ELF.zstf > spike_out/$ELF.stf_dump
+$STF_DUMP -c spike_out/$ELF.zstf > spike_out/$ELF.stf_dump
+$STF_RDUMP   spike_out/$ELF.zstf > spike_out/$ELF.rstf_dump
 
 echo "DROMAJO"
 $DROM --march=$ISA $DSTF --stf_trace drom_out/$ELF.zstf elfs/$ELF
-$STF_DUMP drom_out/$ELF.zstf > drom_out/$ELF.stf_dump
+$STF_DUMP -c drom_out/$ELF.zstf > drom_out/$ELF.stf_dump
+$STF_RDUMP   drom_out/$ELF.zstf > drom_out/$ELF.rstf_dump
 
-tkdiff spike_out/$ELF.stf_dump drom_out/$ELF.stf_dump
+tkdiff spike_out/$ELF.stf_dump drom_out/$ELF.stf_dump &
+tkdiff spike_out/$ELF.rstf_dump drom_out/$ELF.rstf_dump &

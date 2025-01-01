@@ -175,11 +175,24 @@ static inline reg_t execute_insn_logged(processor_t* p, reg_t pc, insn_fetch_t f
     commit_log_stash_privilege(p);
   }
 
+//  // ----------------------------------------------------------
+//  if(!p->get_state()->serialized) {
+//    stfhandler->trace_insn(p,fetch,"SLOW LOOP");
+//  }
+//  stfhandler->stf_last_pc = pc;
+//  // ----------------------------------------------------------
+
   reg_t npc;
 
   try {
+
     npc = fetch.func(p, fetch.insn, pc);
+
     if (npc != PC_SERIALIZE_BEFORE) {
+
+stfhandler->update_state(p,fetch.insn.bits(),pc,npc);
+stfhandler->trace_insn(p,fetch,"SLOW LOOP");
+
       if (p->get_log_commits_enabled()) {
         commit_log_print_insn(p, pc, fetch.insn);
       }
@@ -292,12 +305,12 @@ void processor_t::step(size_t n)
           if (debug && !state.serialized)
             disasm(fetch.insn);
 
-          // ----------------------------------------------------------
-          if(!state.serialized) {
-            stfhandler->trace_insn(this,fetch,"SLOW LOOP");
-          }
-          // ----------------------------------------------------------
-          stfhandler->stf_last_pc = pc;
+//          // ----------------------------------------------------------
+//          if(!state.serialized) {
+//            stfhandler->trace_insn(this,fetch,"SLOW LOOP");
+//          }
+//          // ----------------------------------------------------------
+//          stfhandler->stf_last_pc = pc;
           pc = execute_insn_logged(this, pc, fetch);
           ++stfhandler->executed_instructions;
           advance_pc();

@@ -190,7 +190,7 @@ static inline reg_t execute_insn_logged(processor_t* p, reg_t pc, insn_fetch_t f
       }
       throw;
   } catch(mem_trap_t& t) {
-      //handle segfault in midlle of vector load/store
+      //handle segfault in middle of vector load/store
       if (p->get_log_commits_enabled()) {
         for (auto item : p->get_state()->log_reg_write) {
           if ((item.first & 3) == 3) {
@@ -204,7 +204,6 @@ static inline reg_t execute_insn_logged(processor_t* p, reg_t pc, insn_fetch_t f
     throw;
   }
   p->update_histogram(pc);
-
   return npc;
 }
 
@@ -294,9 +293,11 @@ void processor_t::step(size_t n)
             disasm(fetch.insn);
 
           // ----------------------------------------------------------
-          stfhandler->trace_insn(this,fetch,"SLOW LOOP");
+          if(!state.serialized) {
+            stfhandler->trace_insn(this,fetch,"SLOW LOOP");
+          }
           // ----------------------------------------------------------
-
+          stfhandler->stf_last_pc = pc;
           pc = execute_insn_logged(this, pc, fetch);
           ++stfhandler->executed_instructions;
           advance_pc();

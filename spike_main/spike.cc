@@ -552,9 +552,9 @@ int main(int argc, char** argv)
 
   auto return_code = s.run();
 
-  if(!stfhandler->insn_num_tracing) {
+//  if(!stfhandler->insn_num_tracing) {
     stfhandler->close_trace();
-  }
+//  }
 
   for (auto& mem : mems)
     delete mem.second;

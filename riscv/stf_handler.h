@@ -48,7 +48,6 @@ struct stf_reg_access_t
 //
 // TODO: description
 //
-//
 // TODO: at the moment tracing is supported when 1 processor is begin simulated.
 // ---------------------------------------------------------------------------
 struct StfHandler
@@ -69,9 +68,6 @@ struct StfHandler
     exit(0);
   }
 
-  //If trace file name is empty early exit
-  //If in trace region check for start/stop macros
-  //  if stop - set state and return
   // ---------------------------------------------------------------- 
   // ---------------------------------------------------------------- 
   void trace_insn(processor_t *proc,insn_fetch_t &fetch,
@@ -95,7 +91,6 @@ struct StfHandler
   void trace_count_insn(processor_t *proc,insn_fetch_t &fetch,
                         std::string debug="")
   {
-
     //First time reaching 
     if(executed_instructions == insn_start) {
       in_trace_region = true;
@@ -108,7 +103,6 @@ struct StfHandler
     }
 
     if(executed_instructions >= insn_start+insn_count) {
-
       fprintf(stderr,"-I: tracing stopped at PC:0x%lx, instr# %ld\n",
               proc->get_state()->pc,executed_instructions);
 
@@ -123,18 +117,35 @@ struct StfHandler
                         std::string debug="")
   {
     pending_region = false;
+    auto const state = proc->get_state();
+    auto const PC = state->pc;
 
-    // The trace file is not closed here since we support non-contigous 
-    // regions
-    if(is_stop_macro(fetch.insn.bits())) {
-      fprintf(stderr,"-I: trace stop opc detected\n");
-      if(exit_on_stop_opc) {
-        terminate_simulator("exit_on_stop_opc and STOP MACRO");
+    // The trace file is not closed here since we support non-contiguous 
+    // regions. STOPs while already stopped are ignored
+    if(is_stop_macro(fetch.insn.bits()) ) { //&& in_trace_region) {
+
+      fprintf(stderr,"-I: trace stop  opc detected 0x%lx\n",PC);
+      if(stf_verbose) {
+        fprintf(stderr,"    %s\n",debug.c_str());
+        fprintf(stderr,"    traced_instructions   %" PRIu64 "\n",
+                            traced_instructions);
+        fprintf(stderr,"    executed_instructions %" PRIu64 "\n",
+                            executed_instructions);
       }
 
+      fprintf(stderr,"-I: traced %ld of %ld executed instructions\n",
+              traced_instructions,executed_instructions);
+
+      if(exit_on_stop_opc) {
+        terminate_simulator("--stf_exit_on_stop_opc and stop opc detected");
+      }
+      
       in_trace_region = false;
+      pending_record_machine_state = false;
+ 
       //Optionally exclude the trace macros from the trace
-      if(!include_trace_macros)  return;
+      //TODO need test if(!include_trace_macros)  return;
+      return;
     }
 
     // This is the start macro, this could be the 1st overall or the
@@ -142,30 +153,51 @@ struct StfHandler
     // has not been initialized. For start of any region we record the
     // state of the machine on entry to the region.
     if(is_start_macro(fetch.insn.bits())) {
-      fprintf(stderr,"-I: trace start opc detected\n");
+
+      fprintf(stderr,"-I: trace start opc detected 0x%lx\n",PC);
+
+      if(stf_verbose) {
+        fprintf(stderr,"    %s\n",debug.c_str());
+        fprintf(stderr,"    traced_instructions   %" PRIu64 "\n",
+                            traced_instructions);
+        fprintf(stderr,"    executed_instructions %" PRIu64 "\n",
+                            executed_instructions);
+      }
+
       auto  _xlen = proc->get_xlen();
       reg_t _satp = proc->get_state()->satp->read();
       reg_t _asid = get_field(_satp, _xlen == 32 ? SATP32_ASID : SATP64_ASID);
 
       prog_asid = (uint64_t) (_asid & ASID_MASK);
 
+      //We are already in trace_macro_insn and so slow loop
+      pending_region = false;
+
       //start macro is the beginning of the trace region
       in_trace_region = true;
   
+      pending_record_machine_state = true; 
+
+      //Optionally exclude the trace macros from the trace
+      //TODO need testif(!include_trace_macros)  return;
+      return;
+    }
+
+    if(in_trace_region) {
+
+      //The open_trace is deferred until now to align with behavior
+      //of Dromajo which produces known good trace files.
       if((bool)stf_writer == false)  {
         open_trace(proc,fetch);
       }
-     
-      record_machine_state(proc); 
 
-      //Optionally exclude the trace macros from the trace
-      if(!include_trace_macros)  return;
-    }
+      //Similarly record_machine_state() is also deferred
+      if(pending_record_machine_state) {
+        record_machine_state(proc); 
+        pending_record_machine_state = false; 
+      }
 
-    //Trace this instruction if it has the right PRIV level and ASID
-    if(in_trace_region) {
-      auto const state = proc->get_state();
-
+      //Trace this instruction if it has the right PRIV level and ASID
       bool priv_in_range = state->prv <= get_highest_priv_mode(priv_modes);
       bool pending_exception = false; //TODO find this
 
@@ -175,18 +207,25 @@ struct StfHandler
       bool asid_match = (reg_t) prog_asid == _asid;
 
       bool trace_element = priv_in_range && !pending_exception && asid_match;
+      trace_element = true;
 
-      if(priv_in_range) {
+      if(trace_element) {
         uint32_t insn_bytes = (fetch.insn.bits() & 0x3) == 0x3 ? 4 : 2;
+
+        bool skip_record = false;
+
+//        if(stf_last_pc != proc->get_last_pc() + insn_bytes) {
+//          stf_writer << stf::InstPCTargetRecord(PC);
+//        }
 
         // In dromajo there was a possibility that the current instruction
         // will cause a page fault/timer interrupt/process switch so
         // the next instruction might not be on the programs path
 				// TODO: determine if this is the case in Spike
-        bool skip_record = state->pc != proc->get_last_pc() + insn_bytes;
 
         //TODO: remove the over-ride
-        skip_record = false;
+        //skip_record = PC != proc->get_last_pc() + insn_bytes;
+
         if(!skip_record) {
           if(!disable_memory_records) {
             emit_memory_records(proc);
@@ -333,6 +372,7 @@ struct StfHandler
 
     //The version and SHA's are written to the trace
     if(!force_zero_sha) {
+//TODO work out the issues with configure to have these populated
 //      spike_sha = STF_SPIKE_GIT_SHA;
 //      stf_lib_sha = STF_LIB_GIT_SHA;
 //      vMajor = STF_SPIKE_VERSION_MAJOR;
@@ -371,9 +411,6 @@ struct StfHandler
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
   void close_trace() {
-
-    fprintf(stderr,"-I: traced %ld of %ld executed instructions\n",
-            traced_instructions,executed_instructions);
 
     stf_writer.flush();
     stf_writer.close();
@@ -536,11 +573,11 @@ struct StfHandler
   static StfHandler *instance;
 
 //TODO  move what can be moved to private behind accessors
-//TODO  standardize the name of the member variables vs. option names
 public:
   std::string trace_file_name{""};
 
   bool exit_on_stop_opc{false};
+  bool stf_verbose{true}; //TODO add switch
 
   bool memrecord_size_in_bits{false};
   bool trace_register_state{false};
@@ -562,16 +599,18 @@ public:
   uint32_t highest_priv_mode{0};
   int64_t  prog_asid{-1};
 
-//  uint64_t last_pc{0};
-
   //This flag is used to exit fast loop and enter slow loop
   //This is set when start macro has been detected
   bool pending_region{false};
 
+  bool pending_record_machine_state{false};
+
   bool trace_file_open{false};
   bool in_trace_region{false};  //either between start/stop macros
                                 //or in the range insn_start/insn_count
-
+//HERE
+int HERE_cnt = 0;
+  uint64_t stf_last_pc{0};
   uint64_t executed_instructions{0};
   uint64_t traced_instructions{0};
 

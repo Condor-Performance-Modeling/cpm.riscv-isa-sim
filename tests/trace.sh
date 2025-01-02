@@ -27,6 +27,7 @@ DSTF="--march=rv64gc_zba_zbb_zbc_zbs --stf_priv_modes USHM --stf_force_zero_sha 
 # ------------------------------------------------------------------
 
 ELFS=(
+"zbx.rv64gc_with_zbx.bare.riscv"
 "simple.rv64gc_with_zbx.bare.riscv"
 
 "bmi_pmp.rv64gc_nozbx.bare.riscv"
@@ -52,9 +53,10 @@ ELFS=(
 
 "dhrystone_opt3.10.rv64gc_nozbx.bare.riscv"
 "dhrystone_opt3.10.rv64gc_with_zbx.bare.riscv"
+
 )
 
-ELF=${ELFS[0]}
+ELF=${ELFS[11]}
 
 # ------------------------------------------------------------------
 mkdir -p drom_out
@@ -69,13 +71,13 @@ echo "${ELF}"
 
 echo "SPIKE+STF"
 $SPIKE -l --log=exe.log --isa=$ISA --stf_trace spike_out/$ELF.zstf $STF elfs/$ELF
-$STF_DUMP -c spike_out/$ELF.zstf > spike_out/$ELF.stf_dump
-$STF_RDUMP   spike_out/$ELF.zstf > spike_out/$ELF.rstf_dump
-
-echo "DROMAJO"
-$DROM --march=$ISA $DSTF --stf_trace drom_out/$ELF.zstf elfs/$ELF
-$STF_DUMP -c drom_out/$ELF.zstf > drom_out/$ELF.stf_dump
-$STF_RDUMP   drom_out/$ELF.zstf > drom_out/$ELF.rstf_dump
-
-tkdiff spike_out/$ELF.stf_dump drom_out/$ELF.stf_dump &
-tkdiff spike_out/$ELF.rstf_dump drom_out/$ELF.rstf_dump &
+#$STF_DUMP -c spike_out/$ELF.zstf > spike_out/$ELF.stf_dump
+#$STF_RDUMP   spike_out/$ELF.zstf > spike_out/$ELF.rstf_dump
+#
+#echo "DROMAJO"
+#$DROM --march=$ISA $DSTF --stf_trace drom_out/$ELF.zstf elfs/$ELF
+#$STF_DUMP -c drom_out/$ELF.zstf > drom_out/$ELF.stf_dump
+#$STF_RDUMP   drom_out/$ELF.zstf > drom_out/$ELF.rstf_dump
+#
+#tkdiff spike_out/$ELF.stf_dump drom_out/$ELF.stf_dump &
+#tkdiff spike_out/$ELF.rstf_dump drom_out/$ELF.rstf_dump &

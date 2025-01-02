@@ -8,10 +8,6 @@
 #include "stf_handler.h"
 #include <cassert>
 
-#include <iostream>
-#include <iomanip>
-using namespace std;
-
 static void commit_log_reset(processor_t* p)
 {
   p->get_state()->log_reg_write.clear();
@@ -167,7 +163,6 @@ inline void processor_t::update_histogram(reg_t pc)
 static inline reg_t execute_insn_fast(processor_t* p, reg_t pc, insn_fetch_t fetch) {
   return fetch.func(p, fetch.insn, pc);
 }
-
 static inline reg_t execute_insn_logged(processor_t* p, reg_t pc, insn_fetch_t fetch)
 {
   if (p->get_log_commits_enabled()) {
@@ -175,24 +170,14 @@ static inline reg_t execute_insn_logged(processor_t* p, reg_t pc, insn_fetch_t f
     commit_log_stash_privilege(p);
   }
 
-//  // ----------------------------------------------------------
-//  if(!p->get_state()->serialized) {
-//    stfhandler->trace_insn(p,fetch,"SLOW LOOP");
-//  }
-//  stfhandler->stf_last_pc = pc;
-//  // ----------------------------------------------------------
-
   reg_t npc;
 
   try {
-
     npc = fetch.func(p, fetch.insn, pc);
-
+    //First initialization of stf writer and machine state
+    stfhandler->initialize_if(p,fetch);
     if (npc != PC_SERIALIZE_BEFORE) {
-
-stfhandler->update_state(p,fetch.insn.bits(),pc,npc);
-stfhandler->trace_insn(p,fetch,"SLOW LOOP");
-
+      stfhandler->trace_insn(p,fetch,pc,npc,"SLOW LOOP");
       if (p->get_log_commits_enabled()) {
         commit_log_print_insn(p, pc, fetch.insn);
       }
@@ -217,6 +202,7 @@ stfhandler->trace_insn(p,fetch,"SLOW LOOP");
     throw;
   }
   p->update_histogram(pc);
+
   return npc;
 }
 
@@ -224,8 +210,7 @@ bool processor_t::slow_path()
 {
   return debug || state.single_step != state.STEP_NONE || state.debug_mode ||
          log_commits_enabled || histogram_enabled || in_wfi || 
-         check_triggers_icount
-         || stfhandler->in_traceable_region();
+         check_triggers_icount || stfhandler->in_traceable_region();
 }
 
 // fetch/decode/execute loop
@@ -304,13 +289,6 @@ void processor_t::step(size_t n)
           insn_fetch_t fetch = mmu->load_insn(pc);
           if (debug && !state.serialized)
             disasm(fetch.insn);
-
-//          // ----------------------------------------------------------
-//          if(!state.serialized) {
-//            stfhandler->trace_insn(this,fetch,"SLOW LOOP");
-//          }
-//          // ----------------------------------------------------------
-//          stfhandler->stf_last_pc = pc;
           pc = execute_insn_logged(this, pc, fetch);
           ++stfhandler->executed_instructions;
           advance_pc();
@@ -329,7 +307,6 @@ void processor_t::step(size_t n)
       }
       else while (instret < n)
       {
-
         //This check should never fire 
         if(unlikely(stfhandler->in_traceable_region())) {
           fprintf(stderr,"-E: unexpected trace region while in fast loop\n");
@@ -339,13 +316,11 @@ void processor_t::step(size_t n)
         // Main simulation loop, fast path.
         for (auto ic_entry = _mmu->access_icache(pc); ; ) {
           auto fetch = ic_entry->data;
-
-          //If this is the start macro we exit this loop and
-          //process in the slow loop
+          //If this is the start macro we exit this loop and process 
+          //in the slow loop
           if(unlikely(stfhandler->is_start_macro(fetch.insn.bits()))) {
-            break; //exit for(;;) before insn is executed
+            break; //exit the for(;;) before insn is executed
           }
-
           pc = execute_insn_fast(this, pc, fetch);
           ++stfhandler->executed_instructions;
           ic_entry = ic_entry->next;
@@ -356,8 +331,7 @@ void processor_t::step(size_t n)
           instret++;
           state.pc = pc;
         }
-       
-        //advance the pc for any insn's executed before the start macro 
+
         advance_pc();
         if(unlikely(stfhandler->in_traceable_region())) {
           break; //exit while

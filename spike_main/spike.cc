@@ -21,7 +21,10 @@
 #include <limits>
 #include <cinttypes>
 #include <sstream>
+#include <chrono>
 #include "../VERSION"
+
+using namespace std::chrono;
 
 static void help(int exit_code = 1)
 {
@@ -550,11 +553,11 @@ int main(int argc, char** argv)
   s.configure_log(log, log_commits);
   s.set_histogram(histogram);
 
+  auto exe_start = high_resolution_clock::now();
   auto return_code = s.run();
 
-//  if(!stfhandler->insn_num_tracing) {
-    stfhandler->close_trace();
-//  }
+  stfhandler->report_stats(s,cfg,exe_start);
+  stfhandler->close_trace();
 
   for (auto& mem : mems)
     delete mem.second;

@@ -4,8 +4,8 @@ Spike RISC-V ISA Simulator
 Preface
 -------------
 
-This fork of riscv-isa-sim (aka Spike) has support for STF trace 
-generation.
+This fork of riscv-isa-sim (aka Spike) with support for STF trace 
+generation. (https://github.com/sparcians/stf\_lib).
 
 Condor Computing has donated and maintains this fork.
 
@@ -107,9 +107,6 @@ Spike's principal public API is the RISC-V ISA.  _The C++ interface to Spike's
 internals is **not** considered a public API at this time_, and
 backwards-incompatible changes to this interface _will_ be made without
 incrementing the major version number.
-
-If your system uses the `yum` package manager, you can substitute
-`yum install dtc` for the first step.
 
 Build Steps
 ---------------

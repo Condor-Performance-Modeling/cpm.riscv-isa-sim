@@ -1,17 +1,35 @@
+// --------------------------------------------------------------------------
+// Copyright (C) 2024, Jeff Nye, Condor Computing
+//
+// Licensed under the Apache License, Version 2.0 (the "License")
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// --------------------------------------------------------------------------
 #pragma once
-#include "platform.h"
-//#include "cfg.h"
-//#include "config.h"
+#include "cfg.h"
 #include "decode.h"
+#include "decode_macros.h"
 #include "encoding.h"
 #include "fesvr/option_parser.h"
+#include "platform.h"
+#include "sim.h"
 
-#include "stf-inc/stf_writer.hpp"
 #include "stf-inc/stf_record_types.hpp"
+#include "stf-inc/stf_writer.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <iostream>
 #include <vector>
+using namespace std::chrono;
 using namespace std; //FIXME
 
 #define EN_LOGGING 1
@@ -47,7 +65,6 @@ struct stf_reg_access_t
 // Options and StfWriter handler
 //
 // TODO: description
-//
 // TODO: at the moment tracing is supported when 1 processor is begin simulated.
 // ---------------------------------------------------------------------------
 struct StfHandler
@@ -59,7 +76,15 @@ struct StfHandler
     if(!instance) instance = new StfHandler();
     return instance;
   }
-
+  // ---------------------------------------------------------------- 
+  // ---------------------------------------------------------------- 
+  inline void initialize_if(processor_t *p,insn_fetch_t &fetch) {
+    //stf_writer will for the most part be initialized except at start
+    if((bool)stf_writer == false && in_trace_region) [[unlikely]] {
+      open_trace(p,fetch);
+      record_machine_state(p);
+    }
+  }
   // ---------------------------------------------------------------- 
   //TODO do any required cleanup before forcing exit
   // ---------------------------------------------------------------- 
@@ -67,22 +92,54 @@ struct StfHandler
     fprintf(stderr,"-I: Terminating simulator: %s\n",s.c_str());
     exit(0);
   }
+
+  // ---------------------------------------------------------------- 
+  // ---------------------------------------------------------------- 
+  void report_stats(sim_t &s,cfg_t &cfg,
+       time_point<high_resolution_clock> &start)
+  {
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<milliseconds>(stop - start).count();
+    double duration_ms = static_cast<double>(duration);
+
+    uint64_t instret_count = 0;
+    for(size_t idx=0;idx<cfg.nprocs();++idx) {
+      auto instret_count_n = s.get_core(idx)->get_state()->minstret->read();
+      instret_count += instret_count_n;
+    }
+
+    double mips= 0;
+    if(duration_ms > 0) {
+      mips = ((instret_count / duration_ms ) * (1000.)) / 1000000.;
+    }
+
+    fprintf(stderr,"-I: Totals: \n");
+    fprintf(stderr,"-I:   traced instructions   %ld\n",
+                          traced_instructions_running);
+    fprintf(stderr,"-I:   executed instructions %ld\n",
+                          executed_instructions);
+    fprintf(stderr,"-I    instructions retired  %ld\n",  instret_count);
+    fprintf(stderr,"-I    duration ms           %.2f\n", duration_ms);
+    fprintf(stderr,"-I    wall-clock MIPs       %.2f\n", mips);
+
+  }
+
   // ---------------------------------------------------------------- 
   // ---------------------------------------------------------------- 
   void update_state(processor_t *proc,uint32_t bits,reg_t pc,reg_t npc)
   {
-    last_pc  = pc; //TODO may not be needed
-    last_npc = npc;//ditto
-    insn_bytes = (bits & 0x3) == 0x3 ? 4 : 2;
+    last_npc = npc;
     is_taken_branch = false;
-    if(pc != npc && npc > 0x1010 && pc > 0x1010) {
+    if(pc != npc && npc != PC_SERIALIZE_BEFORE && npc != PC_SERIALIZE_AFTER) {
+      insn_bytes = (bits & 0x3) == 0x3 ? 4 : 2;
       is_taken_branch = npc != pc + insn_bytes;
     }
   }
+
   // ---------------------------------------------------------------- 
   // ---------------------------------------------------------------- 
-  void trace_insn(processor_t *proc,insn_fetch_t &fetch,
-                    std::string debug="")
+  void trace_insn(processor_t *p,insn_fetch_t &fetch,
+                  reg_t pc, reg_t npc, std::string debug="")
   {
     //tracing is not being used
     if(!macro_tracing && !insn_num_tracing) {
@@ -90,11 +147,13 @@ struct StfHandler
       return;
     }
 
+    update_state(p,fetch.insn.bits(),pc,npc);
+
     //This is always cleared, set in transistion from fast to slow
     pending_region = false; 
 
-    if(macro_tracing) trace_macro_insn(proc,fetch,debug);
-    else              trace_count_insn(proc,fetch,debug);
+    if(macro_tracing) trace_macro_insn(p,fetch,debug);
+    else              trace_count_insn(p,fetch,debug);
   }
 
   // ---------------------------------------------------------------- 
@@ -102,14 +161,15 @@ struct StfHandler
   void trace_count_insn(processor_t *proc,insn_fetch_t &fetch,
                         std::string debug="")
   {
-    //First time reaching 
+    //First time reaching this insn count
     if(executed_instructions == insn_start) {
       in_trace_region = true;
       //TODO capture machine state here
     }
 
     if(in_trace_region) {
-      ++traced_instructions;
+      ++traced_instructions_region;
+      ++traced_instructions_running;
       //TODO trace the instruction here
     }
 
@@ -138,21 +198,23 @@ struct StfHandler
       fprintf(stderr,"-I: trace stop  opc detected 0x%lx\n",PC);
       if(stf_verbose) {
         fprintf(stderr,"    %s\n",debug.c_str());
-        fprintf(stderr,"    traced_instructions   %" PRIu64 "\n",
-                            traced_instructions);
+        fprintf(stderr,"    traced_instructions(region)  %" PRIu64 "\n",
+                            traced_instructions_region);
+        fprintf(stderr,"    traced_instructions(running) %" PRIu64 "\n",
+                            traced_instructions_running);
         fprintf(stderr,"    executed_instructions %" PRIu64 "\n",
                             executed_instructions);
       }
 
-      fprintf(stderr,"-I: traced %ld of %ld executed instructions\n",
-              traced_instructions,executed_instructions);
-
+      fprintf(stderr,"-I: traced %ld instructions\n",
+                     traced_instructions_running);
+                             
       if(exit_on_stop_opc) {
         terminate_simulator("--stf_exit_on_stop_opc and stop opc detected");
       }
       
       in_trace_region = false;
-      pending_record_machine_state = false;
+      traced_instructions_region = 0;
  
       //Optionally exclude the trace macros from the trace
       //TODO need test if(!include_trace_macros)  return;
@@ -169,8 +231,10 @@ struct StfHandler
 
       if(stf_verbose) {
         fprintf(stderr,"    %s\n",debug.c_str());
-        fprintf(stderr,"    traced_instructions   %" PRIu64 "\n",
-                            traced_instructions);
+        fprintf(stderr,"    traced_instructions(region)  %" PRIu64 "\n",
+                            traced_instructions_region);
+        fprintf(stderr,"    traced_instructions(running) %" PRIu64 "\n",
+                            traced_instructions_running);
         fprintf(stderr,"    executed_instructions %" PRIu64 "\n",
                             executed_instructions);
       }
@@ -179,7 +243,7 @@ struct StfHandler
       reg_t _satp = proc->get_state()->satp->read();
       reg_t _asid = get_field(_satp, _xlen == 32 ? SATP32_ASID : SATP64_ASID);
 
-      prog_asid = (uint64_t) (_asid & ASID_MASK);
+      prog_asid = (uint64_t) (_asid & _ASID_MASK);
 
       //We are already in trace_macro_insn and so slow loop
       pending_region = false;
@@ -187,8 +251,6 @@ struct StfHandler
       //start macro is the beginning of the trace region
       in_trace_region = true;
   
-      pending_record_machine_state = true; 
-
       //Optionally exclude the trace macros from the trace
       //TODO need testif(!include_trace_macros)  return;
       return;
@@ -202,15 +264,9 @@ struct StfHandler
         open_trace(proc,fetch);
       }
 
-      //Similarly record_machine_state() is also deferred
-      if(pending_record_machine_state) {
-        record_machine_state(proc); 
-        pending_record_machine_state = false; 
-      }
-
       //Trace this instruction if it has the right PRIV level and ASID
       bool priv_in_range = state->prv <= get_highest_priv_mode(priv_modes);
-      bool pending_exception = false; //TODO find this
+      bool pending_exception = false; //TODO find this in spike
 
       auto  _xlen = proc->get_xlen();
       reg_t _satp = state->satp->read();
@@ -221,17 +277,11 @@ struct StfHandler
       trace_element = true;
 
       if(trace_element) {
-        //uint32_t insn_bytes = (fetch.insn.bits() & 0x3) == 0x3 ? 4 : 2;
+        uint32_t insn_bytes = (fetch.insn.bits() & 0x3) == 0x3 ? 4 : 2;
 
         bool skip_record = false;
 
-//if(HERE_cnt > 64) exit(1);
-//++HERE_cnt;
-//fprintf(stderr,"PC 0x%lx STF PC 0x%lx\n",proc->get_last_pc(),last_pc);
-
         if(is_taken_branch) {
-//        if(last_pc != proc->get_last_pc() + insn_bytes) {
-//fprintf(stderr,"PC 0x%lx npc 0x%lx\n",last_pc,last_npc);
           stf_writer << stf::InstPCTargetRecord(last_npc);
         }
 
@@ -255,13 +305,15 @@ struct StfHandler
           if(insn_bytes == 4) { 
             stf_writer << stf::InstOpcode32Record(fetch.insn.bits());
           } else {
-            stf_writer << stf::InstOpcode16Record(fetch.insn.bits()&CMP_MASK);
+            stf_writer << stf::InstOpcode16Record(fetch.insn.bits()&_CMP_MASK);
           }
-          ++traced_instructions;
+          ++traced_instructions_region;
+          ++traced_instructions_running;
         }
       }
     }
   }
+
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
   void emit_memory_records(processor_t*) {
@@ -414,7 +466,6 @@ struct StfHandler
       fprintf(stderr, //TODO: ? add 128 to stf_lib ?
         "-E: stf tracing is limited to RV32 and RV64, RV128 found\n");
       assert(0);
-      //stf_writer.setHeaderIEM( stf::INST_IEM::STF_INST_IEM_RV128);
     } 
 
     stf_writer.setTraceFeature(
@@ -428,15 +479,12 @@ struct StfHandler
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
   void close_trace() {
-
     stf_writer.flush();
     stf_writer.close();
   }
-
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
   bool in_traceable_region() { return in_trace_region || pending_region; }
-
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
   bool is_start_macro(uint32_t bits) {
@@ -449,7 +497,6 @@ struct StfHandler
     pending_region = false;
     return bits == _STOP_TRACE;
   }
-
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
   uint32_t get_highest_priv_mode(const std::string& priv_string) {
@@ -468,9 +515,6 @@ struct StfHandler
     return hpriv;
   }
 
-  // ----------------------------------------------------------------
-  // ----------------------------------------------------------------
-//  uint64_t get_last_pc_stf() { return last_pc_stf; }
   // ----------------------------------------------------------------
   // option support methods
   // ----------------------------------------------------------------
@@ -520,6 +564,8 @@ struct StfHandler
     E("  --stf_force_zero_sha   Emit 0 for all SHA's in the STF header.\n");
     E("                         (default false)\n");
     E("  --stf_include_macros   Include the trace macros in the trace.\n");
+    E("                         (default false)\n");
+    E("  --stf_verbose          Verbose console message.\n");
     E("                         (default false)\n");
   }
   #undef E
@@ -582,6 +628,10 @@ struct StfHandler
       include_trace_macros = true;
     });
 
+    parser.option(0,"stf_verbose", 0, [&](const char UNUSED *s){
+      stf_verbose = true;
+    });
+
     //TODO add option checks
     return true;
   }
@@ -594,7 +644,9 @@ public:
   std::string trace_file_name{""};
 
   bool exit_on_stop_opc{false};
-  bool stf_verbose{true}; //TODO add switch
+  bool stf_verbose{false};
+
+  bool first_force{true};
 
   bool memrecord_size_in_bits{false};
   bool trace_register_state{false};
@@ -620,19 +672,15 @@ public:
   //This is set when start macro has been detected
   bool pending_region{false};
 
-  bool pending_record_machine_state{false};
-
   bool trace_file_open{false};
   bool in_trace_region{false};  //either between start/stop macros
                                 //or in the range insn_start/insn_count
-//HERE
-int HERE_cnt = 0;
-  uint64_t last_pc{0};
   uint64_t last_npc{0};
   uint32_t insn_bytes{0};
   bool     is_taken_branch{false};
   uint64_t executed_instructions{0};
-  uint64_t traced_instructions{0};
+  uint64_t traced_instructions_region{0};
+  uint64_t traced_instructions_running{0};
 
   std::vector<stf_reg_access_t> int_reg_writes{};
   std::vector<stf_reg_access_t> int_reg_reads{};
@@ -645,8 +693,8 @@ int HERE_cnt = 0;
 private:
   static constexpr uint32_t _START_TRACE = 0x00004033; //xor x0,x0,x0
   static constexpr uint32_t _STOP_TRACE  = 0x0010c033; //xor x0,x1,x1
-  static constexpr uint64_t ASID_MASK    = 0x000000000000FFFF;
-  static constexpr uint32_t CMP_MASK     = 0x0000FFFF;
+  static constexpr uint64_t _ASID_MASK   = 0x000000000000FFFF;
+  static constexpr uint32_t _CMP_MASK    = 0x0000FFFF;
   // ----------------------------------------------------------------
   // more singleton 
   // ----------------------------------------------------------------

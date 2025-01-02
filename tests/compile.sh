@@ -13,6 +13,9 @@ CC=/data/tools/riscv-embecosm-embedded-ubuntu2204-20240407-14.0.1
 #-o ./elfs/minimal.bare.riscv \
 #-lm -lgcc
 
+TST=simple
+#TST=zbx
+
 $CC/bin/riscv64-unknown-elf-gcc \
 -march=rv64gc_zba_zbb_zbc_zbs \
 -mabi=lp64d \
@@ -31,10 +34,10 @@ $CC/bin/riscv64-unknown-elf-gcc \
 -static \
 -std=gnu99 \
 -Tsrc/linker.ld \
-src/simple.c \
+src/$TST.c \
 src/crt.S \
 src/syscalls.c \
--o ./elfs/simple.rv64gc_with_zbx.bare.riscv \
+-o ./elfs/$TST.rv64gc_with_zbx.bare.riscv \
 -lm -lgcc
 
 

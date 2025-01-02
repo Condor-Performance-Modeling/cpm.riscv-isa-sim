@@ -408,8 +408,6 @@ private:
   void take_trigger_action(triggers::action_t action, reg_t breakpoint_tval, reg_t epc, bool virt);
   void disasm(insn_t insn); // disassemble and print an instruction
   void register_insn(insn_desc_t, bool);
-  // disassemble and stf trace instruction
-  void handle_stf_tracing(insn_t insn);
   int paddr_bits();
 
   void enter_debug_mode(uint8_t cause, uint8_t ext_cause);

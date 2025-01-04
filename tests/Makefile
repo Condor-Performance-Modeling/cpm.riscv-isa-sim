@@ -1,4 +1,4 @@
-.PHONY: defaul
+.PHONY: default doit comp_opts
 
 BASE=/data/tools/riscv-embecosm-embedded-ubuntu2204-20240407-14.0.1
 CC=$(BASE)/bin/riscv64-unknown-elf-gcc
@@ -20,11 +20,13 @@ CMN=src/crt.S src/syscalls.c
 
 A0 =rv64gc
 A1 =rv64gc_zba_zbb_zbc_zbs
+A2 =rv64gcv
 
 default:
 	$(MAKE) ./elfs/simple.$(A0).bare.riscv
 	$(MAKE) ./elfs/simple.$(A1).bare.riscv
 	$(MAKE) ./elfs/zbx.$(A1).bare.riscv
+	$(MAKE) ./elfs/vector.$(A2).bare.riscv
 
 ./elfs/simple.$(A0).bare.riscv: src/simple.c $(CMN)
 	-mkdir -p elfs
@@ -37,6 +39,16 @@ default:
 ./elfs/zbx.$(A1).bare.riscv: src/zbx.c $(CMN)
 	-mkdir -p elfs
 	$(CC) -march=$(A1) $(CFLAGS) $^ -o $@ $(LIBS)
+
+doit: ./elfs/vector.$(A2).bare.riscv
+
+./elfs/vector.$(A2).bare.riscv: src/vector.S
+	-mkdir -p elfs
+	$(CC) -march=$(A2) $(CFLAGS) $^ -o $@
+
+comp_opts:
+	$(CC) -march=help
+#	$(CC) --help=target
 
 clean:
 	-rm -f elfs/*

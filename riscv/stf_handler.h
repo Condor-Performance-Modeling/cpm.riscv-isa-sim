@@ -32,7 +32,7 @@
 using namespace std::chrono;
 using namespace std; //FIXME
 
-#define EN_LOGGING 1
+#define EN_LOGGING 0
 #if EN_LOGGING == 1
 #define LOG(s) std::cout<<s<<std::endl;
 #else
@@ -93,6 +93,9 @@ struct StfHandler
     exit(0);
   }
 
+  // ---------------------------------------------------------------- 
+  // ---------------------------------------------------------------- 
+  bool stf_writer_enabled() { return (bool)stf_writer != false; }
   // ---------------------------------------------------------------- 
   // ---------------------------------------------------------------- 
   void report_stats(sim_t &s,cfg_t &cfg,
@@ -384,6 +387,8 @@ struct StfHandler
     auto const state = p->get_state();
     stf_writer << stf::ForcePCRecord(state->pc);
 
+    //TODO once dromajo comparison is done this if statement should
+    //be removed, when 
     if(_trace_register_state) {
 
       //NXPR declared in decode.h
@@ -396,18 +401,28 @@ struct StfHandler
       }
 
       //NFPR declared in decode.h
-      //TODO: create some test that verifies this vector scheme works when
-      //      reading a trace
-      if(p->get_flen() > 0) {
+      //uint64_t hi = *reinterpret_cast<const uint64_t*>(&state->FPR[f]+1);
+      if(p->get_flen() > 0 && p->get_flen() <= 64) {
+
         for(size_t f=0;f<NFPR;++f) {
-          uint64_t hi = *reinterpret_cast<const uint64_t*>(&state->FPR[f] + 1);
           uint64_t lo = *reinterpret_cast<const uint64_t*>(&state->FPR[f]);
           stf_writer << stf::InstRegRecord(f,
             stf::Registers::STF_REG_TYPE::FLOATING_POINT,
             stf::Registers::STF_REG_OPERAND_TYPE::REG_STATE,
-            std::vector<uint64_t>{lo,hi});
+            lo);
         }
+
+      } else if(p->get_flen() > 64) {
+        //TODO: f128_t is also a problem for stf_lib
+        fprintf(stderr,
+           "-E: found FLEN = %d, FLEN > 64 is not supported in this version\n",
+            p->get_flen());
+        assert(0);
       }
+
+      //TODO add support for dumping vector registers
+      //if(p->VU.get_vlen() > 0) {
+      //}
     }
   }
 
@@ -452,6 +467,8 @@ struct StfHandler
         "-E: stf tracing is limited to RV32 and RV64, RV128 found\n");
       assert(0);
     } 
+
+    //TODO add support for Vector - add the STF_VLEN_CONFIG record
 
     stf_writer.setTraceFeature(
       stf::TRACE_FEATURES::STF_CONTAIN_PHYSICAL_ADDRESS

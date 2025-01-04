@@ -550,14 +550,16 @@ int main(int argc, char** argv)
   }
 
   s.set_debug(debug);
-  s.configure_log(log, (log_commits || stfhandler->stf_enable_log_commits()));
+  s.configure_log(log, log_commits, stfhandler->stf_enable_log_commits());
   s.set_histogram(histogram);
 
   auto exe_start = high_resolution_clock::now();
   auto return_code = s.run();
 
-  stfhandler->report_stats(s,cfg,exe_start);
-  stfhandler->close_trace();
+  if(stfhandler->stf_writer_enabled()) {
+    stfhandler->report_stats(s,cfg,exe_start);
+    stfhandler->close_trace();
+  }
 
   for (auto& mem : mems)
     delete mem.second;

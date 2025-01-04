@@ -19,16 +19,17 @@ DROM=../../cpm.dromajo/build/dromajo
 # ------------------------------------------------------------------
 DOPTS="--disassemble-all --disassemble-zeroes --section=.text --section=.text.startup --section=.text.init  --section=.data -Mnumeric,no-aliases"
 ISA=rv64imafdc_zicntr_zihpm_zba_zbb_zbc_zbs
-STF="--stf_macro_tracing --stf_priv_modes USHM --stf_force_zero_sha"
+STF="--stf_macro_tracing --stf_priv_modes USHM --stf_force_zero_sha --stf_trace_memory_records"
+DSTF="--march=rv64gc_zba_zbb_zbc_zbs --stf_priv_modes USHM --stf_force_zero_sha"
 
-DSTF="--march=rv64gc_zba_zbb_zbc_zbs --stf_priv_modes USHM --stf_force_zero_sha --stf_disable_memory_records"
 # ------------------------------------------------------------------
 # bmi_sanity has 7 regions (start/stop pairs) and an extra stop at the end
 # ------------------------------------------------------------------
 
 ELFS=(
-"zbx.rv64gc_with_zbx.bare.riscv"
-"simple.rv64gc_with_zbx.bare.riscv"
+"simple.rv64gc.bare.riscv"
+"simple.rv64gc_zba_zbb_zbc_zbs.bare.riscv"
+"zbx.rv64gc_zba_zbb_zbc_zbs.bare.riscv"
 
 "bmi_pmp.rv64gc_nozbx.bare.riscv"
 "bmi_pmp.rv64gc_with_zbx.bare.riscv"
@@ -56,28 +57,37 @@ ELFS=(
 
 )
 
-ELF=${ELFS[11]}
+IDX=2
+ELF=${ELFS[${IDX}]}
+SRC=refs
 
+if [ "$IDX" -lt 3 ]; then
+    SRC=elfs
+else
+    SRC=refs
+fi
 # ------------------------------------------------------------------
 mkdir -p drom_out
 mkdir -p spike_out
+mkdir -p objdump
 
 rm -f drom_out/*
 rm -f spike_out/*
+rm -f objdump/*
 # ------------------------------------------------------------------
-$OBJ_DUMP $DOPTS elfs/$ELF > objdump/$ELF.objdump
+$OBJ_DUMP $DOPTS $SRC/$ELF > objdump/$ELF.objdump
 
 echo "${ELF}"
 
 echo "SPIKE+STF"
-$SPIKE -l --log=exe.log --isa=$ISA --stf_trace spike_out/$ELF.zstf $STF elfs/$ELF
-#$STF_DUMP -c spike_out/$ELF.zstf > spike_out/$ELF.stf_dump
-#$STF_RDUMP   spike_out/$ELF.zstf > spike_out/$ELF.rstf_dump
-#
-#echo "DROMAJO"
-#$DROM --march=$ISA $DSTF --stf_trace drom_out/$ELF.zstf elfs/$ELF
-#$STF_DUMP -c drom_out/$ELF.zstf > drom_out/$ELF.stf_dump
-#$STF_RDUMP   drom_out/$ELF.zstf > drom_out/$ELF.rstf_dump
-#
-#tkdiff spike_out/$ELF.stf_dump drom_out/$ELF.stf_dump &
-#tkdiff spike_out/$ELF.rstf_dump drom_out/$ELF.rstf_dump &
+$SPIKE -l --log=exe.log --isa=$ISA --stf_trace spike_out/$ELF.zstf $STF $SRC/$ELF
+$STF_DUMP -c spike_out/$ELF.zstf > spike_out/$ELF.stf_dump
+$STF_RDUMP   spike_out/$ELF.zstf > spike_out/$ELF.rstf_dump
+
+echo "DROMAJO"
+$DROM --march=$ISA $DSTF --stf_trace drom_out/$ELF.zstf $SRC/$ELF
+$STF_DUMP -c drom_out/$ELF.zstf > drom_out/$ELF.stf_dump
+$STF_RDUMP   drom_out/$ELF.zstf > drom_out/$ELF.rstf_dump
+
+tkdiff spike_out/$ELF.stf_dump drom_out/$ELF.stf_dump &
+tkdiff spike_out/$ELF.rstf_dump drom_out/$ELF.rstf_dump &

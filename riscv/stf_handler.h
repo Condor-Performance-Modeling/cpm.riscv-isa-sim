@@ -126,6 +126,12 @@ struct StfHandler
 
   // ---------------------------------------------------------------- 
   // ---------------------------------------------------------------- 
+  bool trace_memory_records()    {  return _trace_memory_records;   }
+  bool trace_register_state()    {  return _trace_register_state;   }
+  bool stf_enable_log_commits()  {  return _trace_memory_records
+                                        || _trace_register_state;   }
+  // ---------------------------------------------------------------- 
+  // ---------------------------------------------------------------- 
   void update_state(processor_t *proc,uint32_t bits,reg_t pc,reg_t npc)
   {
     last_npc = npc;
@@ -294,11 +300,11 @@ struct StfHandler
         //skip_record = PC != proc->get_last_pc() + insn_bytes;
 
         if(!skip_record) {
-          if(!disable_memory_records) {
+          if(_trace_memory_records) {
             emit_memory_records(proc);
           }
 
-          if(trace_register_state) {
+          if(_trace_register_state) {
             emit_register_records(proc);
           }
         
@@ -316,90 +322,69 @@ struct StfHandler
 
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
-  void emit_memory_records(processor_t*) {
+  inline uint64_t bit_mask(size_t size) {
+    size_t num_bits = (size <= 8 ? size : 0) * 8;
+    return num_bits ? (uint64_t(1) << num_bits) - 1 : 0;
+  }
+
+  // ----------------------------------------------------------------
+  // ----------------------------------------------------------------
+  void emit_memory_records(processor_t *p) {
     //auto const state = proc->get_state();
 
     // Memory reads
-    for(auto mem_read : mem_reads) {
-        stf_writer << stf::InstMemAccessRecord(mem_read.vaddr,
-                                               mem_read.size,
-                                               0,
-                                               stf::INST_MEM_ACCESS::READ);
-        stf_writer << stf::InstMemContentRecord(mem_read.value);
+    for(const auto &load : p->get_state()->log_mem_read) {
+      auto [addr, value, size] = load;
+
+      stf_writer << stf::InstMemAccessRecord(addr,size,0,
+                    stf::INST_MEM_ACCESS::READ);
+      stf_writer << stf::InstMemContentRecord(value & bit_mask(size));
     }
 
-    mem_reads.clear();
+    //TODO: this is a coordination problem with Spike's native logging
+    //      scheme. Add check to make sure --stf_trace_memory_records
+    //      is not enabled at the same time as --log-commits until a
+    //      coordination test can be written.
+    p->get_state()->log_mem_read.clear();
 
     // Memory writes
-    for(auto mem_write : mem_writes) {
-        stf_writer << stf::InstMemAccessRecord(mem_write.vaddr,
-                                               mem_write.size,
-                                               0,
-                                               stf::INST_MEM_ACCESS::WRITE);
-        // empty content for now
-        stf_writer << stf::InstMemContentRecord(mem_write.value);
+    for(const auto &store : p->get_state()->log_mem_write) {
+      auto [addr, value, size] = store;
+
+      stf_writer << stf::InstMemAccessRecord(addr,size, 0,
+                    stf::INST_MEM_ACCESS::WRITE);
+      stf_writer << stf::InstMemContentRecord((long int) value);
     }
 
-    mem_writes.clear();
+    //TODO see above
+    p->get_state()->log_mem_write.clear();
   }
+
   // ----------------------------------------------------------------
+  // Trace updates to the register state caused by insn execution
+  // CSRs are not traced; side effects, if any, are not traced
   // ----------------------------------------------------------------
-  void emit_register_records(processor_t *proc) {
-    auto const state = proc->get_state();
+  void emit_register_records(processor_t *p) {
 
-    if(proc->get_flen() > 0) {
-      for(auto f : fp_reg_reads) {
-        uint64_t hi = *reinterpret_cast<const uint64_t*>(&state->FPR[f.idx]+1);
-        uint64_t lo = *reinterpret_cast<const uint64_t*>(&state->FPR[f.idx]);
-        stf_writer << stf::InstRegRecord(f.idx,
-                      stf::Registers::STF_REG_TYPE::FLOATING_POINT,
-                      stf::Registers::STF_REG_OPERAND_TYPE::REG_SOURCE,
-                      std::vector<uint64_t>{lo,hi});
-      }
+    // These are expensive in terms of model performance
+    //TODO re-consider whether these are interesting, and 
+    //should be included in trace
 
-      fp_reg_reads.clear();
-
-      for(auto f : fp_reg_writes) {
-        uint64_t hi = *reinterpret_cast<const uint64_t*>(&state->FPR[f.idx]+1);
-        uint64_t lo = *reinterpret_cast<const uint64_t*>(&state->FPR[f.idx]);
-        stf_writer << stf::InstRegRecord(f.idx,
-                      stf::Registers::STF_REG_TYPE::FLOATING_POINT,
-                      stf::Registers::STF_REG_OPERAND_TYPE::REG_DEST,
-                      std::vector<uint64_t>{lo,hi});
-      }
-
-      fp_reg_writes.clear();
+    //r is std::map<reg_t, freg_t> commit_log_reg_t
+    for(auto r : p->get_state()->log_reg_write) {
     }
-
-    // general purpose src regs
-    for(auto x : int_reg_reads) {
-        stf_writer << stf::InstRegRecord(x.idx,
-                      stf::Registers::STF_REG_TYPE::INTEGER,
-                      stf::Registers::STF_REG_OPERAND_TYPE::REG_DEST,
-                      state->XPR[x.idx]);
-    }
-
-    int_reg_reads.clear();
-
-    // general purpose dst regs
-    for(auto x : int_reg_writes) {
-        stf_writer << stf::InstRegRecord(x.idx,
-                      stf::Registers::STF_REG_TYPE::INTEGER,
-                      stf::Registers::STF_REG_OPERAND_TYPE::REG_DEST,
-                      state->XPR[x.idx]);
-    }
-
-    int_reg_writes.clear();
-
+    p->get_state()->log_reg_write.clear();
   }
-  // ----------------------------------------------------------------
-  // ----------------------------------------------------------------
-  void record_machine_state(processor_t *proc) {
 
-    auto const state = proc->get_state();
+  // ----------------------------------------------------------------
+  // Trace the register state, typically on change in control flow
+  // ----------------------------------------------------------------
+  void record_machine_state(processor_t *p) {
+
+    auto const state = p->get_state();
     stf_writer << stf::ForcePCRecord(state->pc);
 
-    if(trace_register_state) {
+    if(_trace_register_state) {
 
       //NXPR declared in decode.h
       //TODO: this writes X0, should it?
@@ -413,7 +398,7 @@ struct StfHandler
       //NFPR declared in decode.h
       //TODO: create some test that verifies this vector scheme works when
       //      reading a trace
-      if(proc->get_flen() > 0) {
+      if(p->get_flen() > 0) {
         for(size_t f=0;f<NFPR;++f) {
           uint64_t hi = *reinterpret_cast<const uint64_t*>(&state->FPR[f] + 1);
           uint64_t lo = *reinterpret_cast<const uint64_t*>(&state->FPR[f]);
@@ -547,23 +532,25 @@ struct StfHandler
     E("                         STOP_TRACE opcode. Using this switch\n");
     E("                         disables non-contiguous region tracing.\n");
     E("                         (default false)\n");
-    E("  --stf_memrecord_size_in_bits\n");
-    E("                         Write memory access size in bits instead \n");
-    E("                         of bytes\n");
-    E("                         (default false)\n");
     E("  --stf_trace_register_state\n");
-    E("                         Include register state in the STF output\n");
+    E("                         Include changes to register state through \n");
+    E("                         instruction execution in the STF output.\n");
     E("                         (default false)\n");
-    E("  --stf_disable_memory_records\n");
-    E("                         Do not add memory records to STF trace.\n");
+    E("                         Note: changes in control flow emit full\n");
+    E("                         register state regardless of this setting.\n");
+    E("  --stf_trace_memory_records\n");
+    E("                         Include memory records in the STF trace.\n");
     E("                         (default false)\n");
     E("  --stf_priv_modes <USHM|H|US|U>\n");
     E("                         Specify which privilege modes to include \n");
     E("                         in the trace.\n");
     E("                         (default USHM)\n");
     E("  --stf_force_zero_sha   Emit 0 for all SHA's in the STF header.\n");
+    E("                         For regression and other testing purposes\n");
     E("                         (default false)\n");
     E("  --stf_include_macros   Include the trace macros in the trace.\n");
+    E("                         These are:  START:  xor x0,x0,x0\n");
+    E("                                     STOP:   xor x0,x1,x1\n");
     E("                         (default false)\n");
     E("  --stf_verbose          Verbose console message.\n");
     E("                         (default false)\n");
@@ -588,16 +575,12 @@ struct StfHandler
       exit_on_stop_opc = true;
     });
 
-    parser.option(0,"stf_memrecord_size_in_bits", 0, [&](const char UNUSED *s){
-      memrecord_size_in_bits = true;
-    });
-
     parser.option(0,"stf_trace_register_state", 0, [&](const char UNUSED *s){
-      trace_register_state = true;
+      _trace_register_state = true;
     });
 
-    parser.option(0,"stf_disable_memory_records", 0, [&](const char UNUSED *s){
-      disable_memory_records = true;
+    parser.option(0,"stf_trace_memory_records", 0, [&](const char UNUSED *s){
+      _trace_memory_records = true;
     });
 
     parser.option(0,"stf_priv_modes", 1, [&](const char* s){
@@ -648,9 +631,6 @@ public:
 
   bool first_force{true};
 
-  bool memrecord_size_in_bits{false};
-  bool trace_register_state{false};
-  bool disable_memory_records{false};
 
   bool force_zero_sha{false};
   bool include_trace_macros{false};
@@ -668,7 +648,7 @@ public:
   uint32_t highest_priv_mode{0};
   int64_t  prog_asid{-1};
 
-  //This flag is used to exit fast loop and enter slow loop
+  //This flag is used to exit fast loop and enter slow loop.
   //This is set when start macro has been detected
   bool pending_region{false};
 
@@ -691,6 +671,9 @@ public:
   std::vector<stf_mem_access_t> mem_writes{};
 
 private:
+  bool _trace_memory_records{false};
+  bool _trace_register_state{false};
+
   static constexpr uint32_t _START_TRACE = 0x00004033; //xor x0,x0,x0
   static constexpr uint32_t _STOP_TRACE  = 0x0010c033; //xor x0,x1,x1
   static constexpr uint64_t _ASID_MASK   = 0x000000000000FFFF;

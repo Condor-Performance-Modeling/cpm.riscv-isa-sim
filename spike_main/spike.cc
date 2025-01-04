@@ -550,7 +550,7 @@ int main(int argc, char** argv)
   }
 
   s.set_debug(debug);
-  s.configure_log(log, log_commits);
+  s.configure_log(log, (log_commits || stfhandler->stf_enable_log_commits()));
   s.set_histogram(histogram);
 
   auto exe_start = high_resolution_clock::now();

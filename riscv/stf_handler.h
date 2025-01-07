@@ -51,7 +51,7 @@ struct stf_mem_access_t
   uint64_t value;
 };
 // --------------------------------------------------------------------------
-// TODO: in case more fields are needed
+// Keep in case more fields are needed
 // --------------------------------------------------------------------------
 struct stf_reg_access_t
 {
@@ -60,13 +60,12 @@ struct stf_reg_access_t
   {}
   uint64_t idx;
 };
-
-// --------------------------------------------------------------------------
-// Options and StfWriter handler
+// ==========================================================================
+// Instruction tracing, STF format
 //
 // TODO: description
 // TODO: at the moment tracing is supported when 1 processor is begin simulated.
-// ---------------------------------------------------------------------------
+// ========================================================================== 
 struct StfHandler
 {
   // ----------------------------------------------------------------
@@ -80,19 +79,18 @@ struct StfHandler
   // ---------------------------------------------------------------- 
   inline void initialize_if(processor_t *p,insn_fetch_t &fetch) {
     //stf_writer will for the most part be initialized except at start
-    if((bool)stf_writer == false && in_trace_region) [[unlikely]] {
+    if((bool)stf_writer == false && _in_trace_region) [[unlikely]] {
       open_trace(p,fetch);
       record_machine_state(p);
     }
   }
   // ---------------------------------------------------------------- 
-  //TODO do any required cleanup before forcing exit
+  //Do any required cleanup before forcing exit, nothing currently
   // ---------------------------------------------------------------- 
   void terminate_simulator(std::string s) {
     fprintf(stderr,"-I: Terminating simulator: %s\n",s.c_str());
     exit(0);
   }
-
   // ---------------------------------------------------------------- 
   // ---------------------------------------------------------------- 
   bool stf_writer_enabled() { return (bool)stf_writer != false; }
@@ -118,21 +116,22 @@ struct StfHandler
 
     fprintf(stderr,"-I: Totals: \n");
     fprintf(stderr,"-I:   traced instructions   %ld\n",
-                          traced_instructions_running);
+                          _traced_instructions_running);
     fprintf(stderr,"-I:   executed instructions %ld\n",
                           executed_instructions);
-    fprintf(stderr,"-I    instructions retired  %ld\n",  instret_count);
-    fprintf(stderr,"-I    duration ms           %.2f\n", duration_ms);
-    fprintf(stderr,"-I    wall-clock MIPs       %.2f\n", mips);
-
+    fprintf(stderr,"-I:   instructions retired  %ld\n",  instret_count);
+    fprintf(stderr,"-I:   duration ms           %.2f\n", duration_ms);
+    fprintf(stderr,"-I:   wall-clock MIPs       %.2f\n", mips);
   }
-
   // ---------------------------------------------------------------- 
+  // Getters
   // ---------------------------------------------------------------- 
   bool trace_memory_records()    {  return _trace_memory_records;   }
   bool trace_register_state()    {  return _trace_register_state;   }
   bool stf_enable_log_commits()  {  return _trace_memory_records
                                         || _trace_register_state;   }
+  bool traced_instructions_running() {  return _traced_instructions_running; }
+  bool traced_instructions_region()  {  return _traced_instructions_region;  }
   // ---------------------------------------------------------------- 
   // ---------------------------------------------------------------- 
   void update_state(processor_t *proc,uint32_t bits,reg_t pc,reg_t npc)
@@ -144,8 +143,9 @@ struct StfHandler
       is_taken_branch = npc != pc + insn_bytes;
     }
   }
-
   // ---------------------------------------------------------------- 
+  // Common trace instruction method which selects specific trace
+  // method based on trace mode
   // ---------------------------------------------------------------- 
   void trace_insn(processor_t *p,insn_fetch_t &fetch,
                   reg_t pc, reg_t npc, std::string debug="")
@@ -159,44 +159,66 @@ struct StfHandler
     update_state(p,fetch.insn.bits(),pc,npc);
 
     //This is always cleared, set in transistion from fast to slow
-    pending_region = false; 
+    _pending_region = false; 
 
     if(macro_tracing) trace_macro_insn(p,fetch,debug);
     else              trace_count_insn(p,fetch,debug);
   }
 
   // ---------------------------------------------------------------- 
+  // If this is called then macro_tracing == false
   // ---------------------------------------------------------------- 
   void trace_count_insn(processor_t *proc,insn_fetch_t &fetch,
                         std::string debug="")
   {
+    _pending_region = false;
+    auto const state = proc->get_state();
+    auto const PC = state->pc;
+
+    bool stop_a =  is_stop_macro(fetch.insn.bits()) && exit_on_stop_opc;
+    bool stop_b =  executed_instructions >= insn_start+insn_count;
+
+    if(unlikely(stop_a)) {
+      fprintf(stderr,"-I: trace stop  opc detected 0x%lx\n",PC);
+    } 
+
+    if(unlikely(stop_b)) {
+      fprintf(stderr,"-I: tracing stop insn count reached at PC:0x%lx\n",PC);
+    }
+
+    if(unlikely(stop_a || stop_b)) {
+      _in_trace_region = false; //redundant, for clarity/debug
+      report_stats(debug);
+      close_trace();
+      if(stop_a) {
+        terminate_simulator("--stf_exit_on_stop_opc and stop opc detected");
+      } else {
+        terminate_simulator("insn_num_tracing and insn_count reached");
+      }
+    }
+
     //First time reaching this insn count
     if(executed_instructions == insn_start) {
-      in_trace_region = true;
-      //TODO capture machine state here
+      fprintf(stderr,"-I: trace start insn count reached PC:0x%lx\n",PC);
+      _in_trace_region = true;
+      record_machine_state(proc);
     }
 
-    if(in_trace_region) {
-      ++traced_instructions_region;
-      ++traced_instructions_running;
-      //TODO trace the instruction here
-    }
+    if(_in_trace_region) {
 
-    if(executed_instructions >= insn_start+insn_count) {
-      fprintf(stderr,"-I: tracing stopped at PC:0x%lx, instr# %ld\n",
-              proc->get_state()->pc,executed_instructions);
+      if((bool)stf_writer == false)  {
+        open_trace(proc,fetch);
+      }
 
-      close_trace();
-      terminate_simulator("insn_num_tracing and insn_count reached");
+      trace_element(proc,fetch,debug);
     }
   }
-
   // ---------------------------------------------------------------- 
   // ---------------------------------------------------------------- 
   void trace_macro_insn(processor_t *proc,insn_fetch_t &fetch,
                         std::string debug="")
   {
-    pending_region = false;
+    _pending_region = false;
     auto const state = proc->get_state();
     auto const PC = state->pc;
 
@@ -205,25 +227,15 @@ struct StfHandler
     if(is_stop_macro(fetch.insn.bits()) ) { //&& in_trace_region) {
 
       fprintf(stderr,"-I: trace stop  opc detected 0x%lx\n",PC);
-      if(stf_verbose) {
-        fprintf(stderr,"    %s\n",debug.c_str());
-        fprintf(stderr,"    traced_instructions(region)  %" PRIu64 "\n",
-                            traced_instructions_region);
-        fprintf(stderr,"    traced_instructions(running) %" PRIu64 "\n",
-                            traced_instructions_running);
-        fprintf(stderr,"    executed_instructions %" PRIu64 "\n",
-                            executed_instructions);
-      }
 
-      fprintf(stderr,"-I: traced %ld instructions\n",
-                     traced_instructions_running);
-                             
+      report_stats(debug);
+
       if(exit_on_stop_opc) {
         terminate_simulator("--stf_exit_on_stop_opc and stop opc detected");
       }
       
-      in_trace_region = false;
-      traced_instructions_region = 0;
+      _in_trace_region = false;
+      _traced_instructions_region = 0;
  
       //Optionally exclude the trace macros from the trace
       //TODO need test if(!include_trace_macros)  return;
@@ -237,16 +249,7 @@ struct StfHandler
     if(is_start_macro(fetch.insn.bits())) {
 
       fprintf(stderr,"-I: trace start opc detected 0x%lx\n",PC);
-
-      if(stf_verbose) {
-        fprintf(stderr,"    %s\n",debug.c_str());
-        fprintf(stderr,"    traced_instructions(region)  %" PRIu64 "\n",
-                            traced_instructions_region);
-        fprintf(stderr,"    traced_instructions(running) %" PRIu64 "\n",
-                            traced_instructions_running);
-        fprintf(stderr,"    executed_instructions %" PRIu64 "\n",
-                            executed_instructions);
-      }
+      report_stats(debug);
 
       auto  _xlen = proc->get_xlen();
       reg_t _satp = proc->get_state()->satp->read();
@@ -255,37 +258,49 @@ struct StfHandler
       prog_asid = (uint64_t) (_asid & _ASID_MASK);
 
       //We are already in trace_macro_insn and so slow loop
-      pending_region = false;
+      _pending_region = false;
 
       //start macro is the beginning of the trace region
-      in_trace_region = true;
+      _in_trace_region = true;
   
       //Optionally exclude the trace macros from the trace
       //TODO need testif(!include_trace_macros)  return;
       return;
     }
 
-    if(in_trace_region) {
+    if(_in_trace_region) trace_element(proc,fetch,debug);
+  }
 
-      //The open_trace is deferred until now to align with behavior
-      //of Dromajo which produces known good trace files.
-      if((bool)stf_writer == false)  {
-        open_trace(proc,fetch);
-      }
+  // ---------------------------------------------------------------- 
+  // ---------------------------------------------------------------- 
+  void trace_element(processor_t *proc,insn_fetch_t &fetch,
+                     std::string debug="") 
+  {
+    auto const state = proc->get_state();
+    auto const PC = state->pc;
+    //The open_trace is deferred until now to align with behavior
+    //of Dromajo which produces known good trace files.
+    if((bool)stf_writer == false)  {
+      open_trace(proc,fetch);
+    }
 
-      //Trace this instruction if it has the right PRIV level and ASID
-      bool priv_in_range = state->prv <= get_highest_priv_mode(priv_modes);
-      bool pending_exception = false; //TODO find this in spike
+    //Trace this instruction if it has the right PRIV level and ASID
+    bool priv_in_range = state->prv <= get_highest_priv_mode(priv_modes);
+    bool pending_exception = false; //TODO find this in spike
 
-      auto  _xlen = proc->get_xlen();
-      reg_t _satp = state->satp->read();
-      reg_t _asid = get_field(_satp,_xlen == 32 ? SATP32_ASID : SATP64_ASID);
-      bool asid_match = (reg_t) prog_asid == _asid;
+    auto  _xlen = proc->get_xlen();
+    reg_t _satp = state->satp->read();
+    reg_t _asid = get_field(_satp,_xlen == 32 ? SATP32_ASID : SATP64_ASID);
+    bool asid_match = (reg_t) prog_asid == _asid;
 
-      bool trace_element = priv_in_range && !pending_exception && asid_match;
-      trace_element = true;
+    //Instruction number tracing ignores all predicates
+    bool trace_this = (priv_in_range && !pending_exception && asid_match)
+                   || insn_num_tracing;
 
-      if(trace_element) {
+    //TODO fix the override
+    trace_this = true;
+
+    if(trace_this) {
         uint32_t insn_bytes = (fetch.insn.bits() & 0x3) == 0x3 ? 4 : 2;
 
         bool skip_record = false;
@@ -293,11 +308,10 @@ struct StfHandler
         if(is_taken_branch) {
           stf_writer << stf::InstPCTargetRecord(last_npc);
         }
-
-        // In dromajo there was a possibility that the current instruction
+       // In dromajo there was a possibility that the current instruction
         // will cause a page fault/timer interrupt/process switch so
         // the next instruction might not be on the programs path
-				// TODO: determine if this is the case in Spike
+        // TODO: determine if this is the case in Spike
 
         //TODO: remove the over-ride
         //skip_record = PC != proc->get_last_pc() + insn_bytes;
@@ -310,19 +324,35 @@ struct StfHandler
           if(_trace_register_state) {
             emit_register_records(proc);
           }
-        
-          if(insn_bytes == 4) { 
+
+          if(insn_bytes == 4) {
             stf_writer << stf::InstOpcode32Record(fetch.insn.bits());
           } else {
             stf_writer << stf::InstOpcode16Record(fetch.insn.bits()&_CMP_MASK);
           }
-          ++traced_instructions_region;
-          ++traced_instructions_running;
-        }
-      }
+          ++_traced_instructions_region;
+          ++_traced_instructions_running;
+       }
     }
   }
 
+  // ---------------------------------------------------------------- 
+  // ---------------------------------------------------------------- 
+  void report_stats(std::string debug="") {
+    if(stf_verbose) {
+      fprintf(stderr,"    %s\n",debug.c_str());
+      fprintf(stderr,"    traced_instructions(region)  %" PRIu64 "\n",
+                          _traced_instructions_region);
+      fprintf(stderr,"    traced_instructions(running) %" PRIu64 "\n",
+                          _traced_instructions_running);
+      fprintf(stderr,"    executed_instructions %" PRIu64 "\n",
+                          executed_instructions);
+    }
+
+    fprintf(stderr,"-I: traced %ld instructions\n",
+                   _traced_instructions_running);
+                             
+  }
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
   inline uint64_t bit_mask(size_t size) {
@@ -333,10 +363,10 @@ struct StfHandler
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
   void emit_memory_records(processor_t *p) {
-    //auto const state = proc->get_state();
+    auto const state = p->get_state();
 
     // Memory reads
-    for(const auto &load : p->get_state()->log_mem_read) {
+    for(const auto &load : state->log_mem_read) {
       auto [addr, value, size] = load;
 
       stf_writer << stf::InstMemAccessRecord(addr,size,0,
@@ -348,10 +378,10 @@ struct StfHandler
     //      scheme. Add check to make sure --stf_trace_memory_records
     //      is not enabled at the same time as --log-commits until a
     //      coordination test can be written.
-    p->get_state()->log_mem_read.clear();
+    state->log_mem_read.clear();
 
     // Memory writes
-    for(const auto &store : p->get_state()->log_mem_write) {
+    for(const auto &store : state->log_mem_write) {
       auto [addr, value, size] = store;
 
       stf_writer << stf::InstMemAccessRecord(addr,size, 0,
@@ -360,7 +390,7 @@ struct StfHandler
     }
 
     //TODO see above
-    p->get_state()->log_mem_write.clear();
+    state->log_mem_write.clear();
   }
 
   // ----------------------------------------------------------------
@@ -392,7 +422,6 @@ struct StfHandler
     if(_trace_register_state) {
 
       //NXPR declared in decode.h
-      //TODO: this writes X0, should it?
       for(size_t x=0;x<NXPR;++x) {
         stf_writer << stf::InstRegRecord(x,  
           stf::Registers::STF_REG_TYPE::INTEGER,
@@ -486,17 +515,27 @@ struct StfHandler
   }
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
-  bool in_traceable_region() { return in_trace_region || pending_region; }
+  bool in_traceable_region() { return _in_trace_region || _pending_region; }
+  // ----------------------------------------------------------------
+  bool is_start_of_region(uint32_t bits )  { 
+    if(   (insn_num_tracing && executed_instructions >= insn_start)
+       || (macro_tracing    && is_start_macro(bits)))
+    {
+      _pending_region = true;
+      return true;
+    }
+    return false;
+  }
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
   bool is_start_macro(uint32_t bits) {
-    pending_region = true;
+    _pending_region = true;
     return bits == _START_TRACE;
   }
   // ----------------------------------------------------------------
   // ----------------------------------------------------------------
   bool is_stop_macro (uint32_t bits) {
-    pending_region = false;
+    _pending_region = false;
     return bits == _STOP_TRACE;
   }
   // ----------------------------------------------------------------
@@ -543,7 +582,7 @@ struct StfHandler
     E("                         are exclusive.\n");
     E("                         (default false)\n");
     E("  --stf_insn_start <N>   Start STF tracing after N instructions.\n");
-    E("  --stf_insn_count <N>  Terminate STF tracing after N instructions\n");
+    E("  --stf_insn_count <N>   Terminate STF tracing after N instructions\n");
     E("                         from stf_insn_start.\n");
     E("  --stf_exit_on_stop_opc Terminate the simulation after detecting a\n");
     E("                         STOP_TRACE opcode. Using this switch\n");
@@ -569,24 +608,17 @@ struct StfHandler
     E("                         These are:  START:  xor x0,x0,x0\n");
     E("                                     STOP:   xor x0,x1,x1\n");
     E("                         (default false)\n");
-    E("  --stf_verbose          Verbose console message.\n");
-    E("                         (default false)\n");
+    //Hidden option
+    //E("  --stf_verbose          Verbose console message.\n");
+    //E("                         (default false)\n");
   }
   #undef E
   // -------------------------------------------------------------------------
-  //TODO: option value validation is needed
-  bool set_options(option_parser_t &parser,cfg_t &cfg)
+  void set_options(option_parser_t &parser)
   {
-
     parser.option(0,"stf_trace", 1, [&](const char* s) {
       trace_file_name = s;
     });
-
-    if(!trace_file_name.empty() && cfg.nprocs() > 1 ) {
-      fprintf(stderr,"STF tracing supports only a single cpu, %d specified.\n",
-              (int)cfg.nprocs());
-      return false;
-    }
 
     parser.option(0,"stf_exit_on_stop_opc", 0, [&](const char UNUSED *s){
       exit_on_stop_opc = true;
@@ -632,14 +664,32 @@ struct StfHandler
       stf_verbose = true;
     });
 
-    //TODO add option checks
-    return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // At present checks are simple
+  // -------------------------------------------------------------------------
+  bool option_checks(cfg_t &cfg) {
+
+    bool ok = true;
+    if(macro_tracing && insn_num_tracing) {
+      fprintf(stderr,"\n-E: --stf_macro_tracing && --stf_insn_num_tracing are "
+                     "mutually exclusive\n\n");
+      ok = false;
+    }
+
+    if(!trace_file_name.empty() && cfg.nprocs() > 1 ) {
+      fprintf(stderr,"\n-E: STF tracing supports only a single cpu, "
+                     "%d specified.\n\n", (int)cfg.nprocs());
+      ok = false;
+    }
+
+    return ok;
   }
 
   // more singleton 
   static StfHandler *instance;
 
-//TODO  move what can be moved to private behind accessors
 public:
   std::string trace_file_name{""};
 
@@ -667,29 +717,20 @@ public:
 
   //This flag is used to exit fast loop and enter slow loop.
   //This is set when start macro has been detected
-  bool pending_region{false};
 
   bool trace_file_open{false};
-  bool in_trace_region{false};  //either between start/stop macros
-                                //or in the range insn_start/insn_count
+  uint64_t executed_instructions{0};
   uint64_t last_npc{0};
   uint32_t insn_bytes{0};
   bool     is_taken_branch{false};
-  uint64_t executed_instructions{0};
-  uint64_t traced_instructions_region{0};
-  uint64_t traced_instructions_running{0};
-
-  std::vector<stf_reg_access_t> int_reg_writes{};
-  std::vector<stf_reg_access_t> int_reg_reads{};
-  std::vector<stf_reg_access_t> fp_reg_writes{};
-  std::vector<stf_reg_access_t> fp_reg_reads{};
-
-  std::vector<stf_mem_access_t> mem_reads{};
-  std::vector<stf_mem_access_t> mem_writes{};
 
 private:
+  bool _pending_region{false};
+  bool _in_trace_region{false};
   bool _trace_memory_records{false};
   bool _trace_register_state{false};
+  uint64_t _traced_instructions_region{0};
+  uint64_t _traced_instructions_running{0};
 
   static constexpr uint32_t _START_TRACE = 0x00004033; //xor x0,x0,x0
   static constexpr uint32_t _STOP_TRACE  = 0x0010c033; //xor x0,x1,x1

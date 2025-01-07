@@ -457,16 +457,14 @@ int main(int argc, char** argv)
   });
 
   //stf_trace options
-  if(!stfhandler->set_options(parser,cfg)) {
-    fprintf(stderr,"-E: stf options conflict detected with standard options\n");
-    exit(1);
-  }
+  stfhandler->set_options(parser);
 
   auto argv1 = parser.parse(argv);
   std::vector<std::string> htif_args(argv1, (const char*const*)argv + argc);
 
-  if (!*argv1)
+  if (!*argv1 || !stfhandler->option_checks(cfg)) {
     help();
+  }
 
   std::vector<std::pair<reg_t, abstract_mem_t*>> mems =
       make_mems(cfg.mem_layout);

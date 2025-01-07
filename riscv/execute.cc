@@ -318,7 +318,7 @@ void processor_t::step(size_t n)
           auto fetch = ic_entry->data;
           //If this is the start macro we exit this loop and process 
           //in the slow loop
-          if(unlikely(stfhandler->is_start_macro(fetch.insn.bits()))) {
+          if(unlikely(stfhandler->is_start_of_region(fetch.insn.bits()))) {
             break; //exit the for(;;) before insn is executed
           }
           pc = execute_insn_fast(this, pc, fetch);

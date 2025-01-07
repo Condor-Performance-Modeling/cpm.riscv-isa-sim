@@ -1,4 +1,5 @@
 #! /bin/bash
+set -e
 # ------------------------------------------------------------------
 # Sample isa string from spike execution
 #xrv64i2p1_m2p0_a2p1_f2p2_d2p2_c2p0_zicsr2p0_zifencei2p0_zmmul1p0_zba1p0_zbb1p0_zbc1p0_zbs1p0
@@ -18,11 +19,25 @@ DROM=../../cpm.dromajo/build/dromajo
 # Tool opts
 # ------------------------------------------------------------------
 DOPTS="--disassemble-all --disassemble-zeroes --section=.text --section=.text.startup --section=.text.init  --section=.data -Mnumeric,no-aliases"
+
 ISA=rv64imafdcv_zicntr_zihpm_zba_zbb_zbc_zbs
-#STF="--stf_macro_tracing --stf_priv_modes USHM --stf_force_zero_sha --stf_trace_memory_records"
-STF="--stf_macro_tracing --stf_priv_modes USHM --stf_force_zero_sha --stf_trace_register_state "
-#DSTF="--march=rv64gcv_zba_zbb_zbc_zbs --stf_priv_modes USHM --stf_force_zero_sha"
-DSTF="--march=rv64gcv_zba_zbb_zbc_zbs --stf_priv_modes USHM --stf_force_zero_sha --stf_disable_memory_records --stf_trace_register_state"
+DISA=--march=rv64gcv_zba_zbb_zbc_zbs
+
+START=10
+STOP=100
+
+#MODE="macro"
+MODE="count"
+# ------------------------------------------------------------------
+if [ "$MODE" = "macro" ]; then
+  STF="--stf_macro_tracing --stf_priv_modes USHM --stf_force_zero_sha"
+
+  DSTF="--ctrlc --stf_priv_modes USHM --stf_force_zero_sha --stf_disable_memory_records "
+else
+  STF="--stf_insn_num_tracing --stf_priv_modes USHM --stf_force_zero_sha --stf_insn_start $START --stf_insn_count $STOP"
+
+  DSTF="--ctrlc --stf_insn_num_tracing --stf_priv_modes USHM --stf_force_zero_sha --stf_disable_memory_records --stf_insn_start $START --stf_insn_length $STOP"
+fi
 
 # ------------------------------------------------------------------
 # bmi_sanity has 7 regions (start/stop pairs) and an extra stop at the end
@@ -88,12 +103,11 @@ echo "${ELF}"
 echo "SPIKE+STF"
 $SPIKE --isa=$ISA --stf_trace spike_out/$ELF.zstf $STF $SRC/$ELF
 
-#$SPIKE -l --log=exe.log --isa=$ISA --stf_trace spike_out/$ELF.zstf $STF $SRC/$ELF
 $STF_DUMP -c spike_out/$ELF.zstf > spike_out/$ELF.stf_dump
 $STF_RDUMP   spike_out/$ELF.zstf > spike_out/$ELF.rstf_dump
 
 echo "DROMAJO"
-$DROM --march=$ISA $DSTF --stf_trace drom_out/$ELF.zstf $SRC/$ELF
+$DROM $DISA --stf_trace drom_out/$ELF.zstf $DSTF $SRC/$ELF
 $STF_DUMP -c drom_out/$ELF.zstf > drom_out/$ELF.stf_dump
 $STF_RDUMP   drom_out/$ELF.zstf > drom_out/$ELF.rstf_dump
 

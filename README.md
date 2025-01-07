@@ -11,7 +11,7 @@ Condor Computing has donated and maintains this fork.
 
 Contact Jeff Nye, Condor Computing.
 
-The STF support is on the branch `spike_dev`
+The STF support is on the branch `spike_stf`
 
 The master branch is kept unmodified to simplify merges with upstream.
 
@@ -107,6 +107,16 @@ Spike's principal public API is the RISC-V ISA.  _The C++ interface to Spike's
 internals is **not** considered a public API at this time_, and
 backwards-incompatible changes to this interface _will_ be made without
 incrementing the major version number.
+
+Clone Steps
+---------------
+To clone, switch to the STF branch and init submodules:
+```
+git clone https://github.com/jeffnye-gh/riscv-isa-sim.git
+cd riscv-isa-sim
+git checkout spike_stf
+git submodule update --init --recursive
+```
 
 Build Steps
 ---------------

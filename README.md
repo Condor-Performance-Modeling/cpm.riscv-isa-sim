@@ -1,7 +1,17 @@
-This is a fork. Remember to 'push origin master' (not main), in this repo.
-
 Spike RISC-V ISA Simulator
 ============================
+
+Preface
+-------------
+
+This fork of riscv-isa-sim (aka Spike) has support for STF trace 
+generation. (https://github.com/sparcians/stf\_lib).
+
+Condor Computing maintains this fork.  Contact Jeff Nye, Condor Computing.
+
+The STF support is on the branch `spike_stf`
+
+The master branch is kept unmodified to simplify future merges with upstream.
 
 About
 -------------
@@ -95,6 +105,16 @@ Spike's principal public API is the RISC-V ISA.  _The C++ interface to Spike's
 internals is **not** considered a public API at this time_, and
 backwards-incompatible changes to this interface _will_ be made without
 incrementing the major version number.
+
+Clone Steps
+---------------
+To clone, switch to the STF branch and init submodules:
+```
+git clone https://github.com/jeffnye-gh/cpm.riscv-isa-sim.git riscv-isa-sim
+cd riscv-isa-sim
+git checkout spike_stf
+git submodule update --init --recursive
+```
 
 Build Steps
 ---------------

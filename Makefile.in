@@ -105,8 +105,8 @@ LDFLAGS += $(STF_LIB)
 # These all appear on the command line, from lowest precedence to
 # highest.
 
-default-CFLAGS   := -DPREFIX=\"$(prefix)\" -Wall -Wno-unused -Wno-nonportable-include-path -g -O2 -fPIC
-default-CXXFLAGS := $(default-CFLAGS) -std=c++2a
+default-CFLAGS   := -DPREFIX=\"$(prefix)\" -Wall -DNDEBUG -O3 -fPIC
+default-CXXFLAGS := $(default-CFLAGS) -std=c++20
 
 mcppbs-CPPFLAGS := @CPPFLAGS@
 mcppbs-CFLAGS   := $(default-CFLAGS) @CFLAGS@

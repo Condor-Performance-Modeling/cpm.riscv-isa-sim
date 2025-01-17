@@ -526,6 +526,30 @@ debug-% :
 	@echo $* = $($*)
 
 #-------------------------------------------------------------------------
+# RISCV and custom tests
+#-------------------------------------------------------------------------
+
+RISCV_TESTS_PREFIX := $(shell pwd)/$(src_dir)/tests/test_binaries
+SPIKE_BINARY := $(shell pwd)/spike
+
+.PHONY: build-riscv-tests
+build-riscv-tests:
+	@echo "Running autoconf..."
+	@cd $(src_dir)/cpm.riscv-tests && autoconf
+	@echo "Running ./configure with --prefix=$(RISCV_TESTS_PREFIX)..."
+	@cd $(src_dir)/cpm.riscv-tests && ./configure --prefix=$(RISCV_TESTS_PREFIX) --disable-custom-stf-load-store
+	@echo "Building riscv-tests..."
+	@cd $(src_dir)/cpm.riscv-tests && make
+	@echo "Installing riscv-tests to $(RISCV_TESTS_PREFIX)..."
+	@cd $(src_dir)/cpm.riscv-tests && make install
+	@echo "riscv-tests build and installation complete!"
+
+.PHONY: test
+test: all build-riscv-tests
+	@echo "Running tests in the tests directory with SPIKE_BINARY=$(SPIKE_BINARY)..."
+	@make -C $(src_dir)/tests SPIKE_BINARY=$(SPIKE_BINARY)
+
+#-------------------------------------------------------------------------
 # Clean up junk
 #-------------------------------------------------------------------------
 

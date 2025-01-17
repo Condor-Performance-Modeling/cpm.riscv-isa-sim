@@ -132,6 +132,24 @@ install path.
 If your system uses the `yum` package manager, you can substitute
 `yum install dtc` for the first step.
 
+Test Steps
+---------------
+
+We assume that the RISCV environment variable is set to the RISC-V tools
+install path.
+
+> [!IMPORTANT]  
+> To build `riscv-tests` submodule that generates test binaries, `riscv64-unknown-elf-gcc` must be added to your PATH.
+
+    $ apt-get install device-tree-compiler libboost-regex-dev libboost-system-dev
+    $ mkdir build
+    $ cd build
+    $ ../configure --prefix=$RISCV
+    $ make test
+
+If your system uses the `yum` package manager, you can substitute
+`yum install dtc` for the first step.
+
 Build Steps on OpenBSD
 ----------------------
 

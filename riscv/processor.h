@@ -17,6 +17,7 @@
 #include "triggers.h"
 #include "../fesvr/memif.h"
 #include "vector_unit.h"
+#include "bb_tracer.h"
 
 #define FIRST_HPMCOUNTER 3
 #define N_HPMCOUNTERS 29
@@ -28,6 +29,7 @@ class simif_t;
 class trap_t;
 class extension_t;
 class disassembler_t;
+class bb_tracer;
 
 reg_t illegal_instruction(processor_t* p, insn_t insn, reg_t pc);
 
@@ -377,6 +379,8 @@ public:
 
   uint64_t get_last_pc() { return last_pc; }
 
+  bb_tracer& get_bb_tracer() {return m_bb_tracer;}
+
 private:
   const isa_parser_t isa;
   const cfg_t * const cfg;
@@ -397,6 +401,7 @@ private:
   bool in_wfi;
   bool check_triggers_icount;
   std::vector<bool> impl_table;
+  bb_tracer m_bb_tracer;
 
   // Note: does not include single-letter extensions in misa
   std::bitset<NUM_ISA_EXTENSIONS> extension_enable_table;

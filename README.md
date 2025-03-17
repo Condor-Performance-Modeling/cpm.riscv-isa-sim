@@ -5,13 +5,13 @@ Preface
 -------------
 
 This fork of riscv-isa-sim (aka Spike) has support for STF trace 
-generation. (https://github.com/sparcians/stf\_lib).
+ and BBV generation. (https://github.com/sparcians/stf_lib). (Condor Computing)[https://condorcomputing.com].
 
-Condor Computing maintains this fork.  Contact Jeff Nye, Condor Computing.
+The default branch is `spike_stf`. All new features are maintained on this
+branch.  The master branch is kept unmodified to simplify future merges 
+with upstream.
 
-The STF support is on the branch `spike_stf`
-
-The master branch is kept unmodified to simplify future merges with upstream.
+See Contributors.md.
 
 About
 -------------

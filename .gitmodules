@@ -1,3 +1,6 @@
 [submodule "stf_lib"]
 	path = stf_lib
 	url = https://github.com/sparcians/stf_lib.git
+[submodule "cpm.riscv-tests"]
+	path = cpm.riscv-tests
+	url = https://github.com/Condor-Performance-Modeling/cpm.riscv-tests

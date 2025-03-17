@@ -3,15 +3,13 @@ Spike RISC-V ISA Simulator
 
 Preface
 -------------
+This fork of riscv-isa-sim (aka Spike) has support for STF trace and BBV generation.
 
-This fork of riscv-isa-sim (aka Spike) has support for STF trace 
-generation. (https://github.com/sparcians/stf_lib).
+The default branch is `spike_stf`. All new features are maintained on this
+branch.  The master branch is kept unmodified to simplify future merges 
+with upstream.
 
-Condor Computing maintains this fork.  Contact Jeff Nye, Condor Computing.
-
-The STF support is on the branch `spike_stf`
-
-The master branch is kept unmodified to simplify future merges with upstream.
+See CONTRIBUTORS.md.
 
 BBV generation
 -------------
@@ -120,15 +118,32 @@ Clone Steps
 ---------------
 To clone, switch to the STF branch and init submodules:
 ```
-git clone https://github.com/jeffnye-gh/cpm.riscv-isa-sim.git riscv-isa-sim
-cd riscv-isa-sim
+git clone https://github.com/jeffnye-gh/cpm.riscv-isa-sim.git cpm.riscv-isa-sim
+cd cpm.riscv-isa-sim
 git checkout spike_stf
 git submodule update --init --recursive
 ```
 
-Build Steps
+Fork Build Steps
 ---------------
+Assumes Ubuntu packages have been previously installed.
 
+NOTE: you must have riscv64-unknown-elf-gcc in your path. This is required
+to build riscv-tests.
+
+    $ mkdir -p build
+    $ mkdir -p install
+    $ cd build
+    $ ../configure --prefix=`pwd`/../install
+    $ make -j$(nproc)
+    $ make install
+
+Previous Version Build Steps
+---------------
+Use the build steps above to build this fork. The instructions below are kept 
+for reference.
+
+```
 We assume that the RISCV environment variable is set to the RISC-V tools
 install path.
 
@@ -141,6 +156,8 @@ install path.
 
 If your system uses the `yum` package manager, you can substitute
 `yum install dtc` for the first step.
+
+```
 
 Build Steps on OpenBSD
 ----------------------

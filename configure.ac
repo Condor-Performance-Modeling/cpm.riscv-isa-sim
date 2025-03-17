@@ -67,6 +67,18 @@ AC_DEFINE_UNQUOTED(DTC, ["dtc"], [Executable name of device-tree-compiler])
 AC_C_BIGENDIAN
 
 #-------------------------------------------------------------------------
+# Check for riscv64-unknown-elf-gcc
+#-------------------------------------------------------------------------
+
+AC_PATH_PROG([RISCV_GCC], [riscv64-unknown-elf-gcc], [no])
+
+if test "x$RISCV_GCC" = "xno"; then
+    AC_MSG_ERROR([riscv64-unknown-elf-gcc not found in PATH. Please install the RISC-V toolchain and ensure it is accessible.])
+else
+    AC_MSG_NOTICE([Found riscv64-unknown-elf-gcc: $RISCV_GCC])
+fi
+
+#-------------------------------------------------------------------------
 # Check for the stf_lib submodule and extract Git SHA
 #-------------------------------------------------------------------------
 
@@ -128,6 +140,73 @@ AC_SUBST([STF_SPIKE_VERSION_MAJOR])
 AC_SUBST([STF_SPIKE_VERSION_MINOR])
 AC_SUBST([STF_SPIKE_VERSION_PATCH])
 
+
+#-------------------------------------------------------------------------
+# Check for the riscv-tests submodule
+#-------------------------------------------------------------------------
+
+AC_MSG_CHECKING([for riscv-tests submodule])
+
+if test -d "${srcdir}/riscv-tests" && test -f "${srcdir}/riscv-tests/.git"; then
+    AC_MSG_RESULT([found])
+else
+    AC_MSG_NOTICE([riscv-tests submodule not found or incomplete. Initializing and updating...])
+    if ! (cd "${srcdir}" && git submodule update --init --recursive); then
+        AC_MSG_ERROR([Failed to initialize and update riscv-tests submodule. Ensure git is available and the submodule is correctly configured.])
+    fi
+fi
+
+#-------------------------------------------------------------------------
+# Configure and build riscv-tests submodule
+#-------------------------------------------------------------------------
+
+AC_MSG_NOTICE([Configuring and building riscv-tests submodule])
+RISCV_TESTS_DIR="${srcdir}/riscv-tests"
+
+# Ensure riscv-tests is fully checked out
+if test ! -d "$RISCV_TESTS_DIR" || test ! -f "$RISCV_TESTS_DIR/configure.ac"; then
+    AC_MSG_ERROR([riscv-tests submodule is missing or incomplete. Ensure it is properly cloned and submodules are updated.])
+fi
+
+# Run autoconf if configure script does not exist
+if test ! -f "$RISCV_TESTS_DIR/configure"; then
+    (cd "$RISCV_TESTS_DIR" && autoconf) || AC_MSG_ERROR([Failed to run autoconf for riscv-tests])
+fi
+
+# Set the correct install path relative to the build directory
+INSTALL_DIR="$(pwd)/../install"
+
+# Configure, build, and install riscv-tests
+if test -f "$RISCV_TESTS_DIR/configure"; then
+    (cd "$RISCV_TESTS_DIR" && \
+        ./configure --prefix="$INSTALL_DIR" && \
+        make -j$(nproc) && \
+        make install) || AC_MSG_ERROR([Failed to build and install riscv-tests submodule])
+else
+    AC_MSG_ERROR([riscv-tests configure script not found after autoconf])
+fi
+
+
+
+##-------------------------------------------------------------------------
+## Configure and build riscv-tests submodule
+##-------------------------------------------------------------------------
+#
+#AC_MSG_NOTICE([Configuring and building riscv-tests submodule])
+#RISCV_TESTS_DIR="${srcdir}/riscv-tests"
+#RISCV_TESTS_BUILD_DIR="${RISCV_TESTS_DIR}/build"
+#
+#if test ! -d "$RISCV_TESTS_BUILD_DIR"; then
+#    mkdir -p "$RISCV_TESTS_BUILD_DIR" || AC_MSG_ERROR([Failed to create build directory for riscv-tests])
+#fi
+#
+#(cd "$RISCV_TESTS_DIR" && autoconf) || AC_MSG_ERROR([Failed to run autoconf for riscv-tests])
+#
+#(cd "$RISCV_TESTS_BUILD_DIR" && \
+#    "$RISCV_TESTS_DIR/configure" --prefix="${abs_top_builddir}/../install" && \
+#    make -j$(nproc) && \
+#    make install) || AC_MSG_ERROR([Failed to build and install riscv-tests submodule])
+#
 #-------------------------------------------------------------------------
 # These macros check to see if we can do a stow-based install and also
 # check for an isa simulator suitable for running the unit test programs

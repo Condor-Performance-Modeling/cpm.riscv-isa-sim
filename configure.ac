@@ -67,6 +67,18 @@ AC_DEFINE_UNQUOTED(DTC, ["dtc"], [Executable name of device-tree-compiler])
 AC_C_BIGENDIAN
 
 #-------------------------------------------------------------------------
+# Check for riscv64-unknown-elf-gcc
+#-------------------------------------------------------------------------
+
+AC_PATH_PROG([RISCV_GCC], [riscv64-unknown-elf-gcc], [no])
+
+if test "x$RISCV_GCC" = "xno"; then
+    AC_MSG_ERROR([riscv64-unknown-elf-gcc not found in PATH. Please install the RISC-V toolchain and ensure it is accessible.])
+else
+    AC_MSG_NOTICE([Found riscv64-unknown-elf-gcc: $RISCV_GCC])
+fi
+
+#-------------------------------------------------------------------------
 # Check for the stf_lib submodule and extract Git SHA
 #-------------------------------------------------------------------------
 

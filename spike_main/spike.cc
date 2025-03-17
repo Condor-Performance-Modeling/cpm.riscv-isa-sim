@@ -89,6 +89,7 @@ static void help(int exit_code = 1)
   fprintf(stderr, "  --dm-no-impebreak     Debug module won't support implicit ebreak in program buffer\n");
   fprintf(stderr, "  --blocksz=<size>      Cache block size (B) for CMO operations(powers of 2) [default 64]\n");
 
+  bb_tracer_options::bbv_options_help();
   stfhandler->stf_help();
   exit(exit_code);
 }
@@ -456,6 +457,9 @@ int main(int argc, char** argv)
     }
   });
 
+  // BBV capture options
+  bb_tracer_options::set_options(parser);
+
   //stf_trace options
   stfhandler->set_options(parser);
 
@@ -552,7 +556,15 @@ int main(int argc, char** argv)
   s.set_histogram(histogram);
 
   auto exe_start = high_resolution_clock::now();
-  auto return_code = s.run();
+
+  int return_code;
+  try{
+        return_code = s.run();
+  }
+  catch(bb_ctrl::simpoint_terminate &e){
+      // display cause of termination and let simulator gracefully close
+      std::cout << e.what();
+  }
 
   if(stfhandler->stf_writer_enabled()) {
     stfhandler->report_stats(s,cfg,exe_start);

@@ -5,13 +5,23 @@ Preface
 -------------
 
 This fork of riscv-isa-sim (aka Spike) has support for STF trace 
-generation. (https://github.com/sparcians/stf\_lib).
+generation. (https://github.com/sparcians/stf_lib).
 
 Condor Computing maintains this fork.  Contact Jeff Nye, Condor Computing.
 
 The STF support is on the branch `spike_stf`
 
 The master branch is kept unmodified to simplify future merges with upstream.
+
+BBV generation
+-------------
+This version of riscv-isa-sim is capable of preparing BBV file to be used by SimPoint application.
+```shell
+spike --en_bbv --bb_file bbv.spike --simpoint_size 5000000 binary.riscv
+```
+Option `--en_bbv` enables BBV tracing. `--simpoint_size` is used to choose window for vector. `--bb_file` is used to
+pass base name of the file. Tracing captures for every simulated core independently and each file is appended with 
+`_cpu<n>` suffix.
 
 About
 -------------

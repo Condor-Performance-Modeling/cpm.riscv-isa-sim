@@ -178,6 +178,7 @@ static inline reg_t execute_insn_logged(processor_t* p, reg_t pc, insn_fetch_t f
     stfhandler->initialize_if(p,fetch);
     if (npc != PC_SERIALIZE_BEFORE) {
       stfhandler->trace_insn(p,fetch,pc,npc,"SLOW LOOP");
+      p->get_bb_tracer().simpoint_step(1u, pc);
       if (p->get_log_commits_enabled()) {
         commit_log_print_insn(p, pc, fetch.insn);
       }
@@ -210,7 +211,7 @@ bool processor_t::slow_path()
 {
   return debug || state.single_step != state.STEP_NONE || state.debug_mode ||
          log_commits_enabled || histogram_enabled || in_wfi || 
-         check_triggers_icount || stfhandler->in_traceable_region();
+         check_triggers_icount || stfhandler->in_traceable_region() || get_bb_tracer().in_region_of_interest();
 }
 
 // fetch/decode/execute loop

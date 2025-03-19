@@ -140,7 +140,6 @@ AC_SUBST([STF_SPIKE_VERSION_MAJOR])
 AC_SUBST([STF_SPIKE_VERSION_MINOR])
 AC_SUBST([STF_SPIKE_VERSION_PATCH])
 
-
 #-------------------------------------------------------------------------
 # Check for the riscv-tests submodule
 #-------------------------------------------------------------------------
@@ -186,27 +185,6 @@ else
     AC_MSG_ERROR([riscv-tests configure script not found after autoconf])
 fi
 
-
-
-##-------------------------------------------------------------------------
-## Configure and build riscv-tests submodule
-##-------------------------------------------------------------------------
-#
-#AC_MSG_NOTICE([Configuring and building riscv-tests submodule])
-#RISCV_TESTS_DIR="${srcdir}/riscv-tests"
-#RISCV_TESTS_BUILD_DIR="${RISCV_TESTS_DIR}/build"
-#
-#if test ! -d "$RISCV_TESTS_BUILD_DIR"; then
-#    mkdir -p "$RISCV_TESTS_BUILD_DIR" || AC_MSG_ERROR([Failed to create build directory for riscv-tests])
-#fi
-#
-#(cd "$RISCV_TESTS_DIR" && autoconf) || AC_MSG_ERROR([Failed to run autoconf for riscv-tests])
-#
-#(cd "$RISCV_TESTS_BUILD_DIR" && \
-#    "$RISCV_TESTS_DIR/configure" --prefix="${abs_top_builddir}/../install" && \
-#    make -j$(nproc) && \
-#    make install) || AC_MSG_ERROR([Failed to build and install riscv-tests submodule])
-#
 #-------------------------------------------------------------------------
 # These macros check to see if we can do a stow-based install and also
 # check for an isa simulator suitable for running the unit test programs

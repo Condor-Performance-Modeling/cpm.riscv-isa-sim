@@ -11,13 +11,3 @@ git submodule deinit -f stf_lib riscv-tests
 rm -rf .git/modules/stf_lib .git/modules/riscv-tests
 git submodule update --init --recursive
 
-#echo "Recreating build and install directories..."
-#mkdir -p build install
-#cd build
-#
-#echo "Reconfiguring and rebuilding..."
-#../configure --prefix="$(pwd)/../install"
-#make -j$(nproc)
-#
-#echo "Rebuild complete!"
-#

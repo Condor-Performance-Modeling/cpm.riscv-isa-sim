@@ -79,7 +79,7 @@ struct StfHandler
   // ---------------------------------------------------------------- 
   inline void initialize_if(processor_t *p,insn_fetch_t &fetch) {
     //stf_writer will for the most part be initialized except at start
-    if((bool)stf_writer == false && _in_trace_region) [[unlikely]] {
+    if((bool)stf_writer == false && in_traceable_region()) [[unlikely]] {
       open_trace(p,fetch);
       record_machine_state(p);
     }
